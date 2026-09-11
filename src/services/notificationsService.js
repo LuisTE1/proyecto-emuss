@@ -32,7 +32,7 @@ export async function sendReservationEmail({ to, sedeName, dateLabel, slotTime, 
   }
 }
 
-export async function requestNotifyOnFreeSlot({ sedeId, sedeName, time, day, contact }) {
-  const { error } = await supabase.from('notify_requests').insert({ sede_id: sedeId, sede_name: sedeName, time, day, contact });
+export async function requestNotifyOnFreeSlot({ sedeId, sedeName, time, fecha, contact }) {
+  const { error } = await supabase.from('notify_requests').insert({ sede_id: sedeId, sede_name: sedeName, time, fecha, contact });
   if (error) throw error;
 }

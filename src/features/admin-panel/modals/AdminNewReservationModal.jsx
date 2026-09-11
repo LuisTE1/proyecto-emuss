@@ -5,9 +5,9 @@ const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: '12px 14px
 const labelStyle = { fontSize: 12.5, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 6 };
 
 export default function AdminNewReservationModal({ state, actions }) {
-  const { adminForm, selectedDay, reservations, holds } = state;
+  const { adminForm, selectedDate, reservations, holds } = state;
   const sedeOptions = buildSedeSelectOptions();
-  const { timeOptions, personaOptions } = buildAdminTimeOptions(adminForm, selectedDay, reservations, holds);
+  const { timeOptions, personaOptions } = buildAdminTimeOptions(adminForm, selectedDate, reservations, holds);
 
   return (
     <Modal maxWidth={460} scroll>

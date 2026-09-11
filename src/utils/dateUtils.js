@@ -1,7 +1,6 @@
-// Fecha de referencia simulada para la demo: 10 de setiembre de 2026.
-export const TODAY_DAY = 10;
-export const CALENDAR_YEAR = 2026;
-export const CALENDAR_MONTH_INDEX = 8; // Setiembre (0-indexado)
+// Fechas reales (formato ISO 'YYYY-MM-DD') en vez del entero "día del mes"
+// que asumía Setiembre 2026 fijo — con esto el calendario puede navegar a
+// cualquier mes de verdad y "hoy" siempre es el día real del reloj.
 
 export const MONTH_NAMES = [
   'Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio',
@@ -15,18 +14,51 @@ export function pad2(n) {
   return String(n).padStart(2, '0');
 }
 
-export function dateForDay(day) {
-  return new Date(CALENDAR_YEAR, CALENDAR_MONTH_INDEX, day);
+// Construye un Date a medianoche LOCAL a partir de un ISO 'YYYY-MM-DD' —
+// nunca uses `new Date('YYYY-MM-DD')` directo, eso lo interpreta como UTC y
+// puede mostrar el día anterior según la zona horaria del navegador.
+export function parseISODate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d);
 }
 
-export function dayLabel(day) {
-  const dow = DOW_SHORT[dateForDay(day).getDay()];
-  return `${dow} ${pad2(day)} Set`;
+export function formatISODate(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`;
 }
 
-export function selectedDateLabel(day) {
-  const dowName = DOW_NAMES[dateForDay(day).getDay()];
-  return `${dowName} ${pad2(day)} de ${MONTH_NAMES[CALENDAR_MONTH_INDEX]} del ${CALENDAR_YEAR}`;
+export function todayISO() {
+  return formatISODate(new Date());
+}
+
+export function addDaysISO(iso, days) {
+  const d = parseISODate(iso);
+  d.setDate(d.getDate() + days);
+  return formatISODate(d);
+}
+
+export function addMonthsISO(iso, months) {
+  const d = parseISODate(iso);
+  d.setMonth(d.getMonth() + months);
+  return formatISODate(d);
+}
+
+export function daysInMonth(year, monthIndex) {
+  return new Date(year, monthIndex + 1, 0).getDate();
+}
+
+// Cuántos meses hacia adelante se puede navegar el calendario público desde
+// el mes real de hoy (no tiene sentido dejar reservar con años de
+// anticipación en una piscina municipal).
+export const MAX_MONTHS_AHEAD = 6;
+
+export function dayLabel(iso) {
+  const d = parseISODate(iso);
+  return `${DOW_SHORT[d.getDay()]} ${pad2(d.getDate())} ${MONTH_NAMES[d.getMonth()].slice(0, 3)}`;
+}
+
+export function selectedDateLabel(iso) {
+  const d = parseISODate(iso);
+  return `${DOW_NAMES[d.getDay()]} ${pad2(d.getDate())} de ${MONTH_NAMES[d.getMonth()]} del ${d.getFullYear()}`;
 }
 
 export function timeToMinutes(range) {
@@ -34,26 +66,17 @@ export function timeToMinutes(range) {
   return h * 60 + m;
 }
 
-// La demo vive en Setiembre 2026: si la fecha real de hoy cae dentro de ese
-// mes, se usa como "hoy" real para bloquear días/horarios ya pasados. Fuera
-// de ese mes (antes o después de la demo) no hay una noción de "hoy" válida
-// en este calendario de un solo mes, así que no se bloquea nada.
-export function isWithinDemoMonth(now = new Date()) {
-  return now.getFullYear() === CALENDAR_YEAR && now.getMonth() === CALENDAR_MONTH_INDEX;
+export function isPastDate(iso, todayIso = todayISO()) {
+  return iso < todayIso;
 }
 
-export function realTodayDay(now = new Date()) {
-  return isWithinDemoMonth(now) ? now.getDate() : null;
-}
-
-// ¿Ya pasó (o está empezando) el horario `time` del día `day`, según la hora
-// real del reloj? Si `day` no es el día real de hoy, solo importa si ya
-// pasó la fecha completa.
-export function isPastSlot(day, time, now = new Date()) {
-  const todayDay = realTodayDay(now);
-  if (todayDay == null) return false;
-  if (day < todayDay) return true;
-  if (day > todayDay) return false;
+// ¿Ya pasó (o está empezando) el horario `time` de la fecha `iso`, según la
+// hora real del reloj? Si `iso` no es hoy, solo importa si ya pasó la
+// fecha completa.
+export function isPastSlot(iso, time, now = new Date()) {
+  const today = todayISO();
+  if (iso < today) return true;
+  if (iso > today) return false;
   const nowMinutes = now.getHours() * 60 + now.getMinutes();
   return timeToMinutes(time) <= nowMinutes;
 }

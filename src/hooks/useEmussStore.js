@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { dayLabel, realTodayDay } from '../utils/dateUtils';
+import { MAX_MONTHS_AHEAD, dayLabel, todayISO } from '../utils/dateUtils';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import {
   SEDES,
@@ -61,21 +61,31 @@ const EMPTY_RESERVATION_FORM = {
   notasAccesibilidad: '',
 };
 
-// Divide el nombre completo de la cuenta en nombres / apellido paterno para
-// precargar el formulario — no es perfecto (no distingue apellido materno)
-// pero evita que alguien logueado tenga que volver a escribir todo.
+// Divide el nombre completo de la cuenta en nombres / apellido paterno /
+// apellido materno para precargar el formulario. Convención peruana
+// habitual: el último apellido es el materno, el penúltimo el paterno, y
+// todo lo anterior son los nombres.
 function splitFullName(fullName) {
-  const parts = (fullName || '').trim().split(/\s+/);
-  return { nombres: parts[0] || '', apellidoPaterno: parts.slice(1).join(' ') || '' };
+  const parts = (fullName || '').trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 3) {
+    return {
+      nombres: parts.slice(0, -2).join(' '),
+      apellidoPaterno: parts[parts.length - 2],
+      apellidoMaterno: parts[parts.length - 1],
+    };
+  }
+  if (parts.length === 2) return { nombres: parts[0], apellidoPaterno: parts[1], apellidoMaterno: '' };
+  return { nombres: parts[0] || '', apellidoPaterno: '', apellidoMaterno: '' };
 }
 
 function prefillFormFromSession(session) {
   if (!session || session.type !== 'client') return { ...EMPTY_RESERVATION_FORM };
-  const { nombres, apellidoPaterno } = splitFullName(session.nombre);
+  const { nombres, apellidoPaterno, apellidoMaterno } = splitFullName(session.nombre);
   return {
     ...EMPTY_RESERVATION_FORM,
     nombres,
     apellidoPaterno,
+    apellidoMaterno,
     documento: session.dni || '',
     telefono: session.telefono || '',
     correo: session.correo || '',
@@ -89,6 +99,11 @@ const EMPTY_AUTH_FORM = { nombre: '', correo: '', password: '', dni: '' };
 // quien necesita más tiempo (ver WCAG 2.2.1), sin poder extenderlo más allá.
 const RESERVATION_HOLD_SECONDS = 480;
 
+function initialCalendarView() {
+  const now = new Date();
+  return { calendarViewYear: now.getFullYear(), calendarViewMonth: now.getMonth() };
+}
+
 const INITIAL_STATE = {
   backendConfigured: isSupabaseConfigured,
   dataLoading: isSupabaseConfigured,
@@ -96,7 +111,8 @@ const INITIAL_STATE = {
   view: 'public',
   activeFilter: 'todo',
   calendarOpen: false,
-  selectedDay: realTodayDay() ?? 9,
+  selectedDate: todayISO(),
+  ...initialCalendarView(),
   reservations: [],
   slotOccupancy: [],
   holds: [],
@@ -140,7 +156,7 @@ function friendlyAuthError(err) {
 
 function occupancyRowFor(reservation) {
   return {
-    code: reservation.code, sedeId: reservation.sedeId, day: reservation.day, time: reservation.time,
+    code: reservation.code, sedeId: reservation.sedeId, fecha: reservation.fecha, time: reservation.time,
     personas: reservation.personas, exclusivo: reservation.exclusivo, estado: reservation.estado,
   };
 }
@@ -259,11 +275,36 @@ export function useEmussStore() {
   // ---- disponibilidad pública ----
   const setActiveFilter = useCallback((key) => patchState({ activeFilter: key }), [patchState]);
   const toggleCalendar = useCallback(() => patchState((s) => ({ calendarOpen: !s.calendarOpen })), [patchState]);
-  const selectDay = useCallback((day) => patchState({ selectedDay: day, calendarOpen: false }), [patchState]);
+  const selectDate = useCallback((fecha) => patchState({ selectedDate: fecha, calendarOpen: false }), [patchState]);
 
-  const openQueueModal = useCallback((sede, time, day) => {
+  // Navegación real de mes en el calendario — no puede ir a meses ya
+  // pasados (nada que reservar ahí) ni más allá de MAX_MONTHS_AHEAD.
+  const calendarPrevMonth = useCallback(() => {
+    patchState((s) => {
+      const now = new Date();
+      let { calendarViewYear: y, calendarViewMonth: m } = s;
+      m -= 1;
+      if (m < 0) { m = 11; y -= 1; }
+      if (y < now.getFullYear() || (y === now.getFullYear() && m < now.getMonth())) return {};
+      return { calendarViewYear: y, calendarViewMonth: m };
+    });
+  }, [patchState]);
+
+  const calendarNextMonth = useCallback(() => {
+    patchState((s) => {
+      const now = new Date();
+      const maxDate = new Date(now.getFullYear(), now.getMonth() + MAX_MONTHS_AHEAD, 1);
+      let { calendarViewYear: y, calendarViewMonth: m } = s;
+      m += 1;
+      if (m > 11) { m = 0; y += 1; }
+      if (y > maxDate.getFullYear() || (y === maxDate.getFullYear() && m > maxDate.getMonth())) return {};
+      return { calendarViewYear: y, calendarViewMonth: m };
+    });
+  }, [patchState]);
+
+  const openQueueModal = useCallback((sede, time, fecha) => {
     clearCountdownTimer();
-    patchState({ modal: { type: 'queue-info', sedeId: sede.id, sedeName: sede.name, slotTime: time, day } });
+    patchState({ modal: { type: 'queue-info', sedeId: sede.id, sedeName: sede.name, slotTime: time, fecha } });
   }, [clearCountdownTimer, patchState]);
 
   const joinQueue = useCallback(() => {
@@ -273,18 +314,18 @@ export function useEmussStore() {
   // Pide el candado del horario en la base de datos ANTES de mostrar el
   // formulario: si alguien más lo ganó en la última fracción de segundo,
   // esto falla y ni siquiera se abre el formulario.
-  const openFormModal = useCallback(async (sede, time, day, cuposLibres) => {
+  const openFormModal = useCallback(async (sede, time, fecha, cuposLibres) => {
     clearCountdownTimer();
     let hold;
     try {
-      hold = await createHold({ sedeId: sede.id, day, time, holdSeconds: RESERVATION_HOLD_SECONDS });
+      hold = await createHold({ sedeId: sede.id, fecha, time, holdSeconds: RESERVATION_HOLD_SECONDS });
     } catch {
       patchState({ globalError: 'Ese horario se acaba de llenar. Elige otro.' });
       refreshAvailability();
       return;
     }
     patchState((s) => ({
-      modal: { type: 'form', sedeId: sede.id, sedeName: sede.name, slotTime: time, day, code: null, holdId: hold.id },
+      modal: { type: 'form', sedeId: sede.id, sedeName: sede.name, slotTime: time, fecha, code: null, holdId: hold.id },
       countdown: RESERVATION_HOLD_SECONDS,
       activeCupos: cuposLibres,
       form: prefillFormFromSession(s.session),
@@ -331,7 +372,7 @@ export function useEmussStore() {
     const nombreCompleto = [f.nombres, f.apellidoPaterno, f.apellidoMaterno].filter(Boolean).join(' ') || 'Invitado EMUSS';
     const acompanantes = f.exclusivo ? [] : (f.acompanantes || []).slice(0, f.personas - 1).filter(Boolean);
     const payload = {
-      sedeId: m.sedeId, day: m.day, time: m.slotTime, personas: Number(f.personas), exclusivo: f.exclusivo,
+      sedeId: m.sedeId, fecha: m.fecha, time: m.slotTime, personas: Number(f.personas), exclusivo: f.exclusivo,
       nombre: nombreCompleto, dni: f.documento || '—', telefono: f.telefono, correo: f.correo, tarifa: f.tarifa, precio,
       necesitaElevador: f.necesitaElevador, necesitaRampa: f.necesitaRampa, necesitaAsistencia: f.necesitaAsistencia,
       vaConCuidador: f.vaConCuidador, notasAccesibilidad: f.notasAccesibilidad,
@@ -354,7 +395,7 @@ export function useEmussStore() {
       }));
       pushActivityLog(`Reserva confirmada — ${sede.name}, carril ${m.slotTime}.`).catch(() => {});
       sendReservationEmail({
-        to: reservation.correo, sedeName: sede.name, dateLabel: dayLabel(m.day),
+        to: reservation.correo, sedeName: sede.name, dateLabel: dayLabel(m.fecha),
         slotTime: m.slotTime, code: reservation.code, nombre: reservation.nombre,
       }).catch(() => {});
     } catch (err) {
@@ -402,7 +443,7 @@ export function useEmussStore() {
       if (!r) return prev;
       return {
         ...prev,
-        modal: { type: 'ticket', sedeId: r.sedeId, sedeName: findSedeById(r.sedeId)?.name, slotTime: r.time, day: r.day, code: r.code },
+        modal: { type: 'ticket', sedeId: r.sedeId, sedeName: findSedeById(r.sedeId)?.name, slotTime: r.time, fecha: r.fecha, code: r.code },
         lastTicket: {
           nombre: r.nombre, dni: r.dni, code: r.code,
           estado: r.estado, precio: r.precio, metodoPago: r.metodoPago,
@@ -413,39 +454,39 @@ export function useEmussStore() {
     });
   }, []);
 
-  const goToAlternative = useCallback((sedeId, time, day) => {
+  const goToAlternative = useCallback((sedeId, time, fecha) => {
     const sede = findSedeById(sedeId);
-    const eff = effectiveSlotState(sede, day, time, state.slotOccupancy, state.holds);
+    const eff = effectiveSlotState(sede, fecha, time, state.slotOccupancy, state.holds);
     patchState({ recommendation: null });
-    openFormModal(sede, time, day, eff.cuposLibres);
+    openFormModal(sede, time, fecha, eff.cuposLibres);
   }, [openFormModal, patchState, state.slotOccupancy, state.holds]);
 
-  const handleSlotClick = useCallback((sede, time, day, effectiveStatus, cuposLibres) => {
+  const handleSlotClick = useCallback((sede, time, fecha, effectiveStatus, cuposLibres) => {
     if (effectiveStatus === 'reservado') {
-      const alt = findAlternativeSlot(sede, time, day, state.slotOccupancy, state.holds);
+      const alt = findAlternativeSlot(sede, time, fecha, state.slotOccupancy, state.holds);
       patchState({
         recommendation: alt ? {
           fromSede: sede.name, sedeName: alt.sede.name, sedeId: alt.sede.id,
-          time: alt.time, distanceMin: alt.sede.distanceMin, cuposLibres: alt.cuposLibres, day,
+          time: alt.time, distanceMin: alt.sede.distanceMin, cuposLibres: alt.cuposLibres, fecha,
         } : null,
       });
       return;
     }
     patchState({ recommendation: null });
-    if (effectiveStatus === 'enreserva') { openQueueModal(sede, time, day); return; }
-    openFormModal(sede, time, day, cuposLibres);
+    if (effectiveStatus === 'enreserva') { openQueueModal(sede, time, fecha); return; }
+    openFormModal(sede, time, fecha, cuposLibres);
   }, [openFormModal, openQueueModal, patchState, state.slotOccupancy, state.holds]);
 
   // ---- notificarme ----
-  const openNotify = useCallback((sedeId, sedeName, time, day) => {
-    patchState({ notifyModal: { sedeId, sedeName, time, day }, notifyConfirmed: false, notifyForm: { contact: '' } });
+  const openNotify = useCallback((sedeId, sedeName, time, fecha) => {
+    patchState({ notifyModal: { sedeId, sedeName, time, fecha }, notifyConfirmed: false, notifyForm: { contact: '' } });
   }, [patchState]);
   const closeNotify = useCallback(() => patchState({ notifyModal: null }), [patchState]);
   const setNotifyContact = useCallback((value) => patchState((s) => ({ notifyForm: { ...s.notifyForm, contact: value } })), [patchState]);
   const submitNotify = useCallback(async () => {
     const nm = state.notifyModal;
     try {
-      await requestNotifyOnFreeSlot({ sedeId: nm.sedeId, sedeName: nm.sedeName, time: nm.time, day: nm.day, contact: state.notifyForm.contact });
+      await requestNotifyOnFreeSlot({ sedeId: nm.sedeId, sedeName: nm.sedeName, time: nm.time, fecha: nm.fecha, contact: state.notifyForm.contact });
       patchState({ notifyConfirmed: true });
     } catch {
       patchState({ globalError: 'No se pudo registrar el aviso.' });
@@ -534,7 +575,7 @@ export function useEmussStore() {
   const openAdminNew = useCallback(() => {
     setState((prev) => {
       const sede = SEDES[0];
-      const times = getSlotTimesForDay(sede, prev.selectedDay);
+      const times = getSlotTimesForDay(sede, prev.selectedDate);
       return {
         ...prev,
         adminModal: 'new',
@@ -547,7 +588,7 @@ export function useEmussStore() {
   const setAdminFormSede = useCallback((sedeId) => {
     setState((prev) => {
       const sede = findSedeById(sedeId);
-      const times = getSlotTimesForDay(sede, prev.selectedDay);
+      const times = getSlotTimesForDay(sede, prev.selectedDate);
       return { ...prev, adminForm: { ...prev.adminForm, sedeId, time: times[0] || '' } };
     });
   }, []);
@@ -560,7 +601,7 @@ export function useEmussStore() {
     const sede = findSedeById(af.sedeId);
     const precio = priceFor(sede, af.tarifa, af.personas, af.exclusivo);
     const payload = {
-      sedeId: af.sedeId, day: state.selectedDay, time: af.time, personas: Number(af.personas), exclusivo: af.exclusivo,
+      sedeId: af.sedeId, fecha: state.selectedDate, time: af.time, personas: Number(af.personas), exclusivo: af.exclusivo,
       nombre: af.nombre || 'Invitado EMUSS', dni: af.documento || '—', telefono: af.telefono, correo: '', tarifa: af.tarifa, precio,
       necesitaElevador: false, necesitaRampa: false, necesitaAsistencia: false, vaConCuidador: false, notasAccesibilidad: '',
     };
@@ -576,7 +617,7 @@ export function useEmussStore() {
     } catch (err) {
       patchState({ globalError: err.message === 'SLOT_FULL' ? 'Ese horario ya está lleno.' : 'No se pudo crear la reserva.' });
     }
-  }, [state.adminForm, state.selectedDay, patchState]);
+  }, [state.adminForm, state.selectedDate, patchState]);
 
   // ---- accesos (RBAC) ----
   const openRbacAdd = useCallback(() => patchState({ rbacModal: 'add', rbacForm: { nombre: '', correo: '', rol: 'Encargado de sede', sedeId: 'chacarilla' } }), [patchState]);
@@ -666,7 +707,9 @@ export function useEmussStore() {
       exitToPublic,
       setActiveFilter,
       toggleCalendar,
-      selectDay,
+      selectDate,
+      calendarPrevMonth,
+      calendarNextMonth,
       handleSlotClick,
       goToAlternative,
       openNotify,

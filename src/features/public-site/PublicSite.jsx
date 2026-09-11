@@ -12,7 +12,7 @@ export default function PublicSite({ state, actions }) {
       <HeroSection />
       <BenefitsSection />
       <AvailabilitySection
-        calendar={buildCalendar(state.selectedDay, state.calendarOpen, actions)}
+        calendar={buildCalendar(state, actions)}
         filters={buildFilters(FILTER_DEFS, state.activeFilter, actions)}
         sedes={buildFilteredSedes(state, actions)}
         omaped={{ ...OMAPED, directionsUrl: directionsUrlFor(OMAPED) }}

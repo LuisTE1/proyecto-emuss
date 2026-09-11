@@ -1,4 +1,4 @@
-import { pad2, timeToMinutes } from '../utils/dateUtils';
+import { pad2, parseISODate, timeToMinutes } from '../utils/dateUtils';
 
 export const LANE_CAPACITY = 3;
 
@@ -56,8 +56,8 @@ export function slotsFromBlocks(blocks) {
   return out;
 }
 
-export function getSlotTimesForDay(sede, day) {
-  if (sede.dynamic) return slotsFromBlocks(blocksForDow(new Date(2026, 8, day).getDay()));
+export function getSlotTimesForDay(sede, fecha) {
+  if (sede.dynamic) return slotsFromBlocks(blocksForDow(parseISODate(fecha).getDay()));
   return sede.slotTimes;
 }
 
@@ -65,17 +65,17 @@ export function getSlotTimesForDay(sede, day) {
 // con los holds activos (gente reservando ese horario ahora mismo, ver
 // holdsService) — ambos llegan por Realtime, así que esto se recalcula solo
 // apenas cambia algo en cualquier pestaña conectada.
-export function effectiveSlotState(sede, day, time, reservations, holds = []) {
-  const key = `${sede.id}|${day}|${time}`;
+export function effectiveSlotState(sede, fecha, time, reservations, holds = []) {
+  const key = `${sede.id}|${fecha}|${time}`;
   const matching = reservations.filter(
-    (r) => r.estado === 'confirmada' && r.sedeId === sede.id && r.day === day && r.time === time
+    (r) => r.estado === 'confirmada' && r.sedeId === sede.id && r.fecha === fecha && r.time === time
   );
   const exclusive = matching.some((r) => r.exclusivo);
   const occupancy = exclusive ? LANE_CAPACITY : matching.reduce((a, r) => a + r.personas, 0);
 
   const now = Date.now();
   const activeHolds = holds.filter(
-    (h) => h.sedeId === sede.id && h.day === day && h.time === time && new Date(h.expiresAt).getTime() > now
+    (h) => h.sedeId === sede.id && h.fecha === fecha && h.time === time && new Date(h.expiresAt).getTime() > now
   );
   const holdExclusive = activeHolds.some((h) => h.exclusivo);
   const holdOccupancy = activeHolds.reduce((a, h) => a + h.personas, 0);
@@ -95,13 +95,13 @@ export function effectiveSlotState(sede, day, time, reservations, holds = []) {
 
 // Busca el carril más cercano en horario (y luego en distancia) con cupo libre
 // en otra sede, para recomendarlo cuando el horario elegido está lleno.
-export function findAlternativeSlot(sede, time, day, reservations, holds = []) {
+export function findAlternativeSlot(sede, time, fecha, reservations, holds = []) {
   const targetMinutes = timeToMinutes(time);
   let best = null;
   SEDES.forEach((other) => {
     if (other.id === sede.id) return;
-    getSlotTimesForDay(other, day).forEach((t) => {
-      const eff = effectiveSlotState(other, day, t, reservations, holds);
+    getSlotTimesForDay(other, fecha).forEach((t) => {
+      const eff = effectiveSlotState(other, fecha, t, reservations, holds);
       if (eff.cuposLibres <= 0) return;
       const diff = Math.abs(timeToMinutes(t) - targetMinutes);
       if (!best || diff < best.diff || (diff === best.diff && other.distanceMin < best.sede.distanceMin)) {

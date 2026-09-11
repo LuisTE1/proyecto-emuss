@@ -19,7 +19,7 @@ export function exportReservationsCSV(reservations, filename = 'reservas_emuss.c
   const lines = [header.join(',')];
   reservations.forEach((r) => {
     const sede = findSedeById(r.sedeId);
-    lines.push([r.code, r.nombre, r.dni, sede ? sede.name : r.sedeId, dayLabel(r.day), r.time, r.personas, r.estado].join(','));
+    lines.push([r.code, r.nombre, r.dni, sede ? sede.name : r.sedeId, dayLabel(r.fecha), r.time, r.personas, r.estado].join(','));
   });
   const blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
@@ -36,7 +36,7 @@ export function mapReservationRow(row) {
   return {
     code: row.code,
     sedeId: row.sede_id,
-    day: row.day,
+    fecha: row.fecha,
     time: row.time,
     personas: row.personas,
     exclusivo: row.exclusivo,
@@ -64,7 +64,7 @@ export function mapReservationRow(row) {
 // es un visitante anónimo. Para la disponibilidad pública se usa
 // `slotOccupancyService` en su lugar (sin datos personales).
 export async function fetchReservations() {
-  const { data, error } = await supabase.from('reservations').select('*').order('day', { ascending: true });
+  const { data, error } = await supabase.from('reservations').select('*').order('fecha', { ascending: true });
   if (error) throw error;
   return (data || []).map(mapReservationRow);
 }
@@ -77,7 +77,7 @@ export async function confirmReservationViaLock(reservation, clientId, holdId) {
   const { data, error } = await supabase.rpc('create_reservation_with_lock', {
     p_hold_id: holdId ?? null,
     p_sede_id: reservation.sedeId,
-    p_day: reservation.day,
+    p_fecha: reservation.fecha,
     p_time: reservation.time,
     p_personas: reservation.personas,
     p_exclusivo: reservation.exclusivo,

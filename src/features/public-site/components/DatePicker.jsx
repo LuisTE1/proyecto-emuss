@@ -1,5 +1,5 @@
 export default function DatePicker({ calendar }) {
-  const { open, onToggle, label, monthLabel, days } = calendar;
+  const { open, onToggle, label, monthLabel, days, onPrevMonth, onNextMonth, canGoPrev, canGoNext } = calendar;
 
   return (
     <div style={{ position: 'relative' }}>
@@ -25,9 +25,27 @@ export default function DatePicker({ calendar }) {
           }}
         >
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-            <button style={{ border: 'none', background: '#eef2ff', cursor: 'pointer', fontSize: 16, width: 32, height: 32, borderRadius: 10, color: '#4f46e5', fontWeight: 700 }}>‹</button>
+            <button
+              onClick={onPrevMonth}
+              disabled={!canGoPrev}
+              style={{
+                border: 'none', background: '#eef2ff', cursor: canGoPrev ? 'pointer' : 'default', fontSize: 16,
+                width: 32, height: 32, borderRadius: 10, color: canGoPrev ? '#4f46e5' : '#c7d2fe', fontWeight: 700,
+              }}
+            >
+              ‹
+            </button>
             <span style={{ fontWeight: 800, fontSize: 16, color: '#0f172a' }}>{monthLabel}</span>
-            <button style={{ border: 'none', background: '#eef2ff', cursor: 'pointer', fontSize: 16, width: 32, height: 32, borderRadius: 10, color: '#4f46e5', fontWeight: 700 }}>›</button>
+            <button
+              onClick={onNextMonth}
+              disabled={!canGoNext}
+              style={{
+                border: 'none', background: '#eef2ff', cursor: canGoNext ? 'pointer' : 'default', fontSize: 16,
+                width: 32, height: 32, borderRadius: 10, color: canGoNext ? '#4f46e5' : '#c7d2fe', fontWeight: 700,
+              }}
+            >
+              ›
+            </button>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7,1fr)', gap: 4, marginBottom: 8 }}>
             {['Do', 'Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sa'].map((wd) => (

@@ -4,7 +4,7 @@ export function mapHoldRow(row) {
   return {
     id: row.id,
     sedeId: row.sede_id,
-    day: row.day,
+    fecha: row.fecha,
     time: row.time,
     personas: row.personas,
     exclusivo: row.exclusivo,
@@ -23,10 +23,10 @@ export async function fetchActiveHolds() {
 
 // Pide el candado del horario vía RPC: si alguien más ya lo llenó, la base
 // de datos rechaza con 'slot_full' antes de dejarte abrir el formulario.
-export async function createHold({ sedeId, day, time, holdSeconds }) {
+export async function createHold({ sedeId, fecha, time, holdSeconds }) {
   const { data, error } = await supabase.rpc('request_slot_hold', {
     p_sede_id: sedeId,
-    p_day: day,
+    p_fecha: fecha,
     p_time: time,
     p_hold_seconds: holdSeconds,
   });

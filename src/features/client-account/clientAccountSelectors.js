@@ -1,4 +1,4 @@
-import { TODAY_DAY, dayLabel } from '../../utils/dateUtils';
+import { dayLabel, todayISO } from '../../utils/dateUtils';
 import { findSedeById } from '../../services/sedesService';
 
 // Por cuenta (client_id), no por el DNI que se haya escrito en el
@@ -10,18 +10,28 @@ function clientReservations(reservations, session) {
   return reservations.filter((r) => r.clientId === session.id);
 }
 
+function isThisMonth(fecha, today) {
+  return fecha.slice(0, 7) === today.slice(0, 7);
+}
+
+function dayOfMonth(fecha) {
+  return Number(fecha.slice(8, 10));
+}
+
 // KPIs reales del cliente: visitas confirmadas, horas en el agua (1h por
 // reserva), inversión total y racha de semanas seguidas con al menos 1 visita.
 export function buildAccountKpis(reservations, session) {
-  const mine = clientReservations(reservations, session).filter((r) => r.estado === 'confirmada');
+  const today = todayISO();
+  const mine = clientReservations(reservations, session)
+    .filter((r) => r.estado === 'confirmada' && isThisMonth(r.fecha, today));
   const visitas = mine.length;
   const horas = visitas; // cada reserva dura 1 hora
   const inversion = mine.reduce((a, r) => a + (r.precio || 0), 0);
   const promedio = visitas ? Math.round(inversion / visitas) : 0;
 
-  const weeksWithVisit = new Set(mine.map((r) => Math.ceil(r.day / 7)));
+  const weeksWithVisit = new Set(mine.map((r) => Math.ceil(dayOfMonth(r.fecha) / 7)));
   let racha = 0;
-  for (let w = Math.ceil(TODAY_DAY / 7); w >= 1; w--) {
+  for (let w = Math.ceil(dayOfMonth(today) / 7); w >= 1; w--) {
     if (!weeksWithVisit.has(w)) break;
     racha++;
   }
@@ -35,30 +45,34 @@ export function buildAccountKpis(reservations, session) {
 }
 
 export function buildActivityWeeks(reservations, session) {
-  const mine = clientReservations(reservations, session).filter((r) => r.estado === 'confirmada');
+  const today = todayISO();
+  const mine = clientReservations(reservations, session)
+    .filter((r) => r.estado === 'confirmada' && isThisMonth(r.fecha, today));
   const counts = [0, 0, 0, 0];
   mine.forEach((r) => {
-    const week = Math.min(4, Math.ceil(r.day / 7)) - 1;
+    const week = Math.min(4, Math.ceil(dayOfMonth(r.fecha) / 7)) - 1;
     counts[week] += 1;
   });
   return counts.map((count, i) => ({ label: `Sem ${i + 1}`, count }));
 }
 
 export function buildAccountReservations(reservations, session, actions) {
+  const today = todayISO();
   return clientReservations(reservations, session)
     .slice()
-    .sort((a, b) => b.day - a.day)
+    .sort((a, b) => (a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0))
     .map((r) => {
       const sede = findSedeById(r.sedeId);
+      const isUpcoming = r.fecha >= today;
       return {
         code: r.code,
         sedeName: sede ? sede.name : r.sedeId,
-        fecha: dayLabel(r.day),
+        fecha: dayLabel(r.fecha),
         time: r.time,
         personas: r.personas,
-        estadoLabel: r.estado === 'confirmada' ? (r.day >= TODAY_DAY ? 'Próxima' : 'Pasada') : 'Cancelada',
-        cancelable: r.estado === 'confirmada' && r.day >= TODAY_DAY,
-        badgeVariant: r.estado !== 'confirmada' ? 'cancelled' : (r.day >= TODAY_DAY ? 'upcoming' : 'past'),
+        estadoLabel: r.estado === 'confirmada' ? (isUpcoming ? 'Próxima' : 'Pasada') : 'Cancelada',
+        cancelable: r.estado === 'confirmada' && isUpcoming,
+        badgeVariant: r.estado !== 'confirmada' ? 'cancelled' : (isUpcoming ? 'upcoming' : 'past'),
         onCancel: () => actions.cancelReservaByCode(r.code),
       };
     });
@@ -81,7 +95,7 @@ export function buildAccountNotifications(reservations, session) {
         id: r.code,
         cancelled,
         title: cancelled ? 'Reserva cancelada' : 'Reserva confirmada',
-        text: `${sedeName} · ${dayLabel(r.day)} · ${r.time} · ${r.code}`,
+        text: `${sedeName} · ${dayLabel(r.fecha)} · ${r.time} · ${r.code}`,
         time: r.createdAt ? new Date(r.createdAt).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '',
       };
     });

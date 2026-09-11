@@ -14,8 +14,8 @@ import {
 } from '../adminSelectors';
 
 export default function AnalyticsTab({ state, actions }) {
-  const rangeDays = rangeDaysFor(state.adminRange, state.selectedDay);
-  const saturation = buildSaturation(state.selectedDay, state.reservations, state.holds);
+  const rangeDays = rangeDaysFor(state.adminRange, state.selectedDate);
+  const saturation = buildSaturation(state.selectedDate, state.reservations, state.holds);
   const { kpis, reservasEnRango } = buildKpis(state.adminRange, rangeDays, state.reservations, state.maintenance, state.panicActive, saturation);
   const { trendPoints, trendDots } = buildTrend(rangeDays, state.reservations);
   const table = buildTableRows(state.reservations, state.tableSearch, actions);

@@ -61,7 +61,7 @@ export default function PublicSiteModals({ state, actions }) {
         <TicketModal
           ticket={state.lastTicket || {}}
           sedeName={pricing.modalSedeName}
-          dateLabel={modal.day ? dayLabel(modal.day) : ''}
+          dateLabel={modal.fecha ? dayLabel(modal.fecha) : ''}
           slotTime={pricing.modalSlotTime}
           onClose={actions.closeModal}
           onCancelReserva={actions.cancelReserva}

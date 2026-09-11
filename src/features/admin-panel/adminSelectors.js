@@ -1,4 +1,4 @@
-import { dayLabel } from '../../utils/dateUtils';
+import { addDaysISO, dayLabel, daysInMonth, pad2, parseISODate } from '../../utils/dateUtils';
 import { LANE_CAPACITY, SEDES, effectiveSlotState, findSedeById, getSlotTimesForDay } from '../../services/sedesService';
 import { filterReservationsBySearch } from '../../services/reservationsService';
 
@@ -17,15 +17,22 @@ export function buildRangeOptions(adminRange, actions) {
   }));
 }
 
-export function rangeDaysFor(adminRange, selectedDay) {
-  if (adminRange === 'dia') return [selectedDay];
+// Devuelve las fechas reales (ISO) del rango elegido, centradas en la fecha
+// seleccionada — "semana" son los ±3 días reales alrededor, "mes" es el mes
+// calendario real de esa fecha (28-31 días según corresponda).
+export function rangeDaysFor(adminRange, selectedDate) {
+  if (adminRange === 'dia') return [selectedDate];
   if (adminRange === 'semana') {
     const days = [];
-    for (let d = selectedDay - 3; d <= selectedDay + 3; d++) if (d >= 1 && d <= 30) days.push(d);
+    for (let d = -3; d <= 3; d++) days.push(addDaysISO(selectedDate, d));
     return days;
   }
+  const ref = parseISODate(selectedDate);
+  const numDays = daysInMonth(ref.getFullYear(), ref.getMonth());
   const days = [];
-  for (let d = 1; d <= 30; d++) days.push(d);
+  for (let day = 1; day <= numDays; day++) {
+    days.push(`${ref.getFullYear()}-${pad2(ref.getMonth() + 1)}-${pad2(day)}`);
+  }
   return days;
 }
 
@@ -35,12 +42,12 @@ function satColor(pct) {
   return '#059669';
 }
 
-export function buildSaturation(selectedDay, reservations, holds = []) {
+export function buildSaturation(selectedDate, reservations, holds = []) {
   return SEDES.map((sede) => {
-    const times = getSlotTimesForDay(sede, selectedDay);
+    const times = getSlotTimesForDay(sede, selectedDate);
     let sum = 0;
     times.forEach((t) => {
-      const eff = effectiveSlotState(sede, selectedDay, t, reservations, holds);
+      const eff = effectiveSlotState(sede, selectedDate, t, reservations, holds);
       sum += eff.exclusive ? LANE_CAPACITY : eff.occupancy;
     });
     const pct = times.length ? Math.round((sum / (times.length * LANE_CAPACITY)) * 100) : 0;
@@ -50,7 +57,7 @@ export function buildSaturation(selectedDay, reservations, holds = []) {
 }
 
 export function buildKpis(adminRange, rangeDays, reservations, maintenance, panicActive, saturation) {
-  const reservasEnRango = reservations.filter((r) => r.estado === 'confirmada' && rangeDays.includes(r.day));
+  const reservasEnRango = reservations.filter((r) => r.estado === 'confirmada' && rangeDays.includes(r.fecha));
   const totalReservasRango = reservasEnRango.length;
   const ingresosRango = reservasEnRango.reduce((a, r) => a + r.precio, 0);
   const incidenciasActivas = Object.values(maintenance).filter(Boolean).length + (panicActive ? 1 : 0);
@@ -78,14 +85,14 @@ export function buildBarSede(reservasEnRango) {
 
 export function buildTrend(rangeDays, reservations) {
   const trendDayList = rangeDays.length <= 12 ? rangeDays : rangeDays.filter((_, i) => i % Math.ceil(rangeDays.length / 12) === 0);
-  const trendCounts = trendDayList.map((d) => reservations.filter((r) => r.estado === 'confirmada' && r.day === d).length);
+  const trendCounts = trendDayList.map((d) => reservations.filter((r) => r.estado === 'confirmada' && r.fecha === d).length);
   const maxTrend = Math.max(1, ...trendCounts);
   const chartW = 300, chartH = 140, padX = 12, padY = 14;
   const stepX = trendDayList.length > 1 ? (chartW - padX * 2) / (trendDayList.length - 1) : 0;
   const trendDots = trendDayList.map((d, i) => {
     const x = padX + stepX * i;
     const y = chartH - padY - (trendCounts[i] / maxTrend) * (chartH - padY * 2);
-    return { x: Math.round(x), y: Math.round(y) };
+    return { x: Math.round(x), y: Math.round(y), label: dayLabel(d), count: trendCounts[i] };
   });
   const trendPoints = trendDots.map((pt) => `${pt.x},${pt.y}`).join(' ');
   return { trendDots, trendPoints };
@@ -121,7 +128,7 @@ export function buildTableRows(reservations, search, actions) {
     const sede = findSedeById(r.sedeId);
     return {
       code: r.code, nombre: r.nombre, dni: r.dni, sedeName: sede ? sede.name : r.sedeId,
-      fecha: dayLabel(r.day), time: r.time, personas: r.personas,
+      fecha: dayLabel(r.fecha), time: r.time, personas: r.personas,
       estadoLabel: r.estado === 'confirmada' ? 'Confirmada' : 'Cancelada',
       confirmed: r.estado === 'confirmada',
       cancelable: r.estado === 'confirmada',
@@ -162,14 +169,14 @@ export function buildRbacRows(rbacUsers, actions) {
   }));
 }
 
-export function buildAdminTimeOptions(adminForm, selectedDay, reservations, holds = []) {
+export function buildAdminTimeOptions(adminForm, selectedDate, reservations, holds = []) {
   const sede = findSedeById(adminForm.sedeId) || SEDES[0];
-  const times = getSlotTimesForDay(sede, selectedDay);
+  const times = getSlotTimesForDay(sede, selectedDate);
   const timeOptions = times.map((t) => {
-    const eff = effectiveSlotState(sede, selectedDay, t, reservations, holds);
+    const eff = effectiveSlotState(sede, selectedDate, t, reservations, holds);
     return { time: t, label: `${t} (${eff.cuposLibres} cupos)` };
   });
-  const currentEff = adminForm.time ? effectiveSlotState(sede, selectedDay, adminForm.time, reservations, holds) : { cuposLibres: LANE_CAPACITY };
+  const currentEff = adminForm.time ? effectiveSlotState(sede, selectedDate, adminForm.time, reservations, holds) : { cuposLibres: LANE_CAPACITY };
   const personaOptions = [];
   for (let i = 1; i <= Math.max(1, currentEff.cuposLibres); i++) personaOptions.push(i);
   return { timeOptions, personaOptions };

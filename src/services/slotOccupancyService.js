@@ -7,7 +7,7 @@ export function mapSlotOccupancyRow(row) {
   return {
     code: row.reservation_code,
     sedeId: row.sede_id,
-    day: row.day,
+    fecha: row.fecha,
     time: row.time,
     personas: row.personas,
     exclusivo: row.exclusivo,

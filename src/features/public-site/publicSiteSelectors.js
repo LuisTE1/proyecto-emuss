@@ -1,12 +1,8 @@
-import { isPastSlot, pad2, realTodayDay, selectedDateLabel } from '../../utils/dateUtils';
+import { MAX_MONTHS_AHEAD, MONTH_NAMES, daysInMonth, isPastSlot, pad2, selectedDateLabel, todayISO } from '../../utils/dateUtils';
 import { OMAPED, SEDES, directionsUrlFor, effectiveSlotState, findSedeById, getSlotTimesForDay } from '../../services/sedesService';
 import { priceFor } from '../../services/reservationsService';
 
 const LANE_CAPACITY = 3;
-const CALENDAR_DAYS_IN_MONTH = 30;
-const CALENDAR_PREV_MONTH_DAYS = 31;
-const CALENDAR_FIRST_DOW = new Date(2026, 8, 1).getDay();
-const CALENDAR_CELLS = 42;
 
 export function buildFilters(filterDefs, activeFilter, actions) {
   return filterDefs.map((f) => ({
@@ -17,30 +13,51 @@ export function buildFilters(filterDefs, activeFilter, actions) {
   }));
 }
 
-export function buildCalendar(selectedDay, calendarOpen, actions) {
-  const todayDay = realTodayDay();
+// Calendario de un mes real navegable (no más Setiembre 2026 fijo): arma la
+// grilla del mes que se está viendo (calendarViewYear/Month), marca
+// seleccionable solo hoy en adelante, y habilita/deshabilita los botones
+// ‹ › según el rango real permitido (no se puede ir a meses pasados, ni
+// más de MAX_MONTHS_AHEAD hacia adelante).
+export function buildCalendar(state, actions) {
+  const { selectedDate, calendarOpen, calendarViewYear: y, calendarViewMonth: m } = state;
+  const today = todayISO();
+  const firstDow = new Date(y, m, 1).getDay();
+  const numDays = daysInMonth(y, m);
+  const prevMonthDays = daysInMonth(m === 0 ? y - 1 : y, m === 0 ? 11 : m - 1);
+
   const days = [];
-  for (let i = 0; i < CALENDAR_FIRST_DOW; i++) {
-    days.push({ num: CALENDAR_PREV_MONTH_DAYS - CALENDAR_FIRST_DOW + 1 + i, selectable: false });
+  for (let i = 0; i < firstDow; i++) {
+    days.push({ num: prevMonthDays - firstDow + 1 + i, selectable: false });
   }
-  for (let d = 1; d <= CALENDAR_DAYS_IN_MONTH; d++) {
-    const selectable = todayDay == null || d >= todayDay;
-    days.push({ num: d, selectable, selected: d === selectedDay, onClick: selectable ? () => actions.selectDay(d) : undefined });
+  for (let d = 1; d <= numDays; d++) {
+    const iso = `${y}-${pad2(m + 1)}-${pad2(d)}`;
+    const selectable = iso >= today;
+    days.push({ num: d, selectable, selected: iso === selectedDate, onClick: selectable ? () => actions.selectDate(iso) : undefined });
   }
-  const remaining = CALENDAR_CELLS - days.length;
+  const totalCells = Math.ceil((firstDow + numDays) / 7) * 7;
+  const remaining = totalCells - days.length;
   for (let n = 1; n <= remaining; n++) days.push({ num: n, selectable: false });
+
+  const now = new Date();
+  const canGoPrev = y > now.getFullYear() || (y === now.getFullYear() && m > now.getMonth());
+  const maxDate = new Date(now.getFullYear(), now.getMonth() + MAX_MONTHS_AHEAD, 1);
+  const canGoNext = y < maxDate.getFullYear() || (y === maxDate.getFullYear() && m < maxDate.getMonth());
 
   return {
     open: calendarOpen,
     onToggle: actions.toggleCalendar,
-    label: selectedDateLabel(selectedDay),
-    monthLabel: 'Setiembre 2026',
+    label: selectedDateLabel(selectedDate),
+    monthLabel: `${MONTH_NAMES[m]} ${y}`,
     days,
+    onPrevMonth: actions.calendarPrevMonth,
+    onNextMonth: actions.calendarNextMonth,
+    canGoPrev,
+    canGoNext,
   };
 }
 
 export function buildFilteredSedes(state, actions) {
-  const { activeFilter, slotOccupancy, holds, selectedDay, recommendation } = state;
+  const { activeFilter, slotOccupancy, holds, selectedDate, recommendation } = state;
   return SEDES.filter((sede) => activeFilter === 'todo' || sede.tags.includes(activeFilter)).map((sede) => ({
     id: sede.id,
     name: sede.name,
@@ -49,11 +66,11 @@ export function buildFilteredSedes(state, actions) {
     recommendation: recommendation && recommendation.fromSede === sede.name ? {
       text: `Este horario está lleno en ${recommendation.fromSede}. ${recommendation.sedeName} tiene ${recommendation.cuposLibres} lugar(es) libre(s) a las ${recommendation.time.split(' - ')[0]}, a ${recommendation.distanceMin} min de aquí.`,
       ctaLabel: `Ver y reservar en ${recommendation.sedeName}`,
-      onClick: () => actions.goToAlternative(recommendation.sedeId, recommendation.time, recommendation.day),
+      onClick: () => actions.goToAlternative(recommendation.sedeId, recommendation.time, recommendation.fecha),
     } : null,
-    slots: getSlotTimesForDay(sede, selectedDay).map((time) => {
-      const past = isPastSlot(selectedDay, time);
-      const eff = effectiveSlotState(sede, selectedDay, time, slotOccupancy, holds);
+    slots: getSlotTimesForDay(sede, selectedDate).map((time) => {
+      const past = isPastSlot(selectedDate, time);
+      const eff = effectiveSlotState(sede, selectedDate, time, slotOccupancy, holds);
       const status = past ? 'pasado' : eff.status;
       const label = status === 'pasado'
         ? 'Horario pasado'
@@ -68,8 +85,8 @@ export function buildFilteredSedes(state, actions) {
         time,
         label,
         status,
-        onClick: status === 'pasado' ? undefined : () => actions.handleSlotClick(sede, time, selectedDay, status, eff.cuposLibres),
-        onNotify: () => actions.openNotify(sede.id, sede.name, time, selectedDay),
+        onClick: status === 'pasado' ? undefined : () => actions.handleSlotClick(sede, time, selectedDate, status, eff.cuposLibres),
+        onNotify: () => actions.openNotify(sede.id, sede.name, time, selectedDate),
       };
     }),
   }));

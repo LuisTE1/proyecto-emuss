@@ -16,7 +16,7 @@ import {
   fetchReservations,
   priceFor,
 } from '../services/reservationsService';
-import { createHold, fetchActiveHolds, releaseHold } from '../services/holdsService';
+import { createHold, fetchActiveHolds, releaseHold, updateHold } from '../services/holdsService';
 import { fetchSlotOccupancy } from '../services/slotOccupancyService';
 import { subscribeToAvailabilityRealtime, unsubscribeRealtime } from '../services/realtimeService';
 import {
@@ -56,11 +56,10 @@ const EMPTY_RESERVATION_FORM = {
 
 const EMPTY_AUTH_FORM = { nombre: '', correo: '', password: '', dni: '' };
 
-// El cupo se bloquea para los demás mientras alguien completa el formulario;
-// se puede extender para no presionar a quien necesita más tiempo (ver WCAG 2.2.1).
+// El cupo se bloquea para los demás mientras alguien completa el
+// formulario — 8 minutos, más holgado que el original, para no presionar a
+// quien necesita más tiempo (ver WCAG 2.2.1), sin poder extenderlo más allá.
 const RESERVATION_HOLD_SECONDS = 480;
-const RESERVATION_HOLD_EXTEND_SECONDS = 120;
-const RESERVATION_HOLD_MAX_SECONDS = 900;
 
 const INITIAL_STATE = {
   backendConfigured: isSupabaseConfigured,
@@ -272,10 +271,6 @@ export function useEmussStore() {
       });
     }, 1000);
   }, [clearCountdownTimer, patchState, refreshAvailability]);
-
-  const extendCountdown = useCallback(() => {
-    patchState((s) => ({ countdown: Math.min(RESERVATION_HOLD_MAX_SECONDS, s.countdown + RESERVATION_HOLD_EXTEND_SECONDS) }));
-  }, [patchState]);
 
   const goToCart = useCallback(() => patchState((s) => ({ modal: { ...s.modal, type: 'cart' } })), [patchState]);
   const backToForm = useCallback(() => patchState((s) => ({ modal: { ...s.modal, type: 'form' } })), [patchState]);
@@ -567,8 +562,26 @@ export function useEmussStore() {
 
   // ---- formulario de reserva (público) ----
   const setFormField = useCallback((field, value) => {
+    const isHoldField = field === 'personas' || field === 'exclusivo';
+    const previousValue = state.form[field];
+    const holdId = state.modal?.holdId;
+
     patchState((s) => ({ form: { ...s.form, [field]: value } }));
-  }, [patchState]);
+
+    if (!isHoldField || !holdId) return;
+
+    // Mantiene el hold al día con lo que la persona va marcando (personas /
+    // exclusivo), para que otros usuarios vean el horario reflejar esa
+    // intención al instante — no solo cuando se confirma la reserva.
+    const nextPersonas = field === 'personas' ? Number(value) : Number(state.form.personas);
+    const nextExclusivo = field === 'exclusivo' ? value : state.form.exclusivo;
+    updateHold({ holdId, personas: nextPersonas, exclusivo: nextExclusivo }).catch(() => {
+      patchState((s) => ({
+        form: { ...s.form, [field]: previousValue },
+        globalError: 'Ya no hay espacio para eso en este horario — alguien más lo tomó justo ahora.',
+      }));
+    });
+  }, [patchState, state.form, state.modal]);
 
   return {
     state,
@@ -599,7 +612,6 @@ export function useEmussStore() {
       confirmReserva,
       cancelReserva,
       setFormField,
-      extendCountdown,
       togglePanic,
       toggleMaintenance,
       setAdminTab,

@@ -5,7 +5,7 @@ const labelStyle = { fontSize: 12.5, fontWeight: 700, color: '#334155', display:
 
 export default function ReservationFormModal({
   sedeName, slotTime, countdownLabel, tarifaVecino, tarifaRegular, totalPrecio,
-  form, personaOptions, onChangeField, onCancel, onSubmit, onExtendTime,
+  form, personaOptions, onChangeField, onCancel, onSubmit,
 }) {
   return (
     <Modal maxWidth={460} scroll>
@@ -13,15 +13,6 @@ export default function ReservationFormModal({
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#075985' }}>🔒 Guardamos tu cupo mientras completas el formulario</span>
           <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.01em', whiteSpace: 'nowrap', marginLeft: 10, color: '#075985' }}>{countdownLabel}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginTop: 6 }}>
-          <span style={{ fontSize: 12.5, color: '#0369a1' }}>Tómate tu tiempo, puedes extenderlo cuando quieras.</span>
-          <button
-            onClick={onExtendTime}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #bae6fd', background: '#ffffff', color: '#075985', fontWeight: 700, fontSize: 12, cursor: 'pointer', whiteSpace: 'nowrap' }}
-          >
-            + 2 min
-          </button>
         </div>
       </div>
       <div style={{ fontWeight: 800, fontSize: 19, color: '#0f172a', marginBottom: 4, letterSpacing: '-0.01em' }}>{sedeName}</div>
@@ -92,7 +83,11 @@ export default function ReservationFormModal({
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 14 }}>
           <div>
             <label style={labelStyle}>Teléfono</label>
-            <input type="text" value={form.telefono} onChange={(e) => onChangeField('telefono', e.target.value)} placeholder="9********" style={fieldStyle} />
+            <input
+              type="tel" inputMode="numeric" maxLength={9} value={form.telefono}
+              onChange={(e) => onChangeField('telefono', e.target.value.replace(/\D/g, '').slice(0, 9))}
+              placeholder="9********" style={fieldStyle}
+            />
           </div>
           <div>
             <label style={labelStyle}>Correo electrónico</label>

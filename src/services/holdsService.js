@@ -42,3 +42,20 @@ export async function releaseHold(holdId) {
   const { error } = await supabase.from('reservation_holds').delete().eq('id', holdId);
   if (error) throw error;
 }
+
+// Mantiene el hold al día con lo que la persona va marcando en el
+// formulario (personas / carril exclusivo), revalidando el cupo real —
+// así otros usuarios ven el horario reflejar esa intención al instante,
+// no recién cuando se confirma la reserva.
+export async function updateHold({ holdId, personas, exclusivo }) {
+  const { data, error } = await supabase.rpc('update_slot_hold', {
+    p_hold_id: holdId,
+    p_personas: personas,
+    p_exclusivo: exclusivo,
+  });
+  if (error) {
+    if (error.message?.includes('slot_full')) throw new Error('SLOT_FULL');
+    throw error;
+  }
+  return mapHoldRow(data);
+}

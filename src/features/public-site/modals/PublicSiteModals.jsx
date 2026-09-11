@@ -35,7 +35,6 @@ export default function PublicSiteModals({ state, actions }) {
           onChangeField={actions.setFormField}
           onCancel={actions.closeModal}
           onSubmit={actions.goToCart}
-          onExtendTime={actions.extendCountdown}
         />
       )}
 
@@ -51,7 +50,6 @@ export default function PublicSiteModals({ state, actions }) {
           accesibilidadLabel={buildAccessibilityLabel(state.form)}
           onBack={actions.backToForm}
           onConfirm={actions.confirmReserva}
-          onExtendTime={actions.extendCountdown}
         />
       )}
 

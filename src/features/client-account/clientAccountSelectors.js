@@ -1,9 +1,13 @@
 import { TODAY_DAY, dayLabel } from '../../utils/dateUtils';
 import { findSedeById } from '../../services/sedesService';
 
+// Por cuenta (client_id), no por el DNI que se haya escrito en el
+// formulario de esa reserva puntual — ese campo puede quedar distinto al
+// del perfil (vacío, de un tercero, con un typo) y la reserva sigue siendo
+// tuya porque la hiciste logueado.
 function clientReservations(reservations, session) {
   if (!session) return [];
-  return reservations.filter((r) => r.dni === session.dni);
+  return reservations.filter((r) => r.clientId === session.id);
 }
 
 // KPIs reales del cliente: visitas confirmadas, horas en el agua (1h por

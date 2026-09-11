@@ -9,21 +9,13 @@ function Row({ label, value, strong }) {
   );
 }
 
-export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadLabel, onBack, onConfirm, onExtendTime }) {
+export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadLabel, onBack, onConfirm }) {
   return (
     <Modal maxWidth={440} scroll>
       <div style={{ background: '#f0f9ff', border: '1px solid #e0f2fe', borderRadius: 16, padding: '14px 18px', marginBottom: 20 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
           <span style={{ fontSize: 14, fontWeight: 700, color: '#075985' }}>🔒 Tu cupo sigue guardado</span>
           <span style={{ fontWeight: 800, fontSize: 17, letterSpacing: '-0.01em', color: '#075985' }}>{countdownLabel}</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'flex-end', marginTop: 6 }}>
-          <button
-            onClick={onExtendTime}
-            style={{ padding: '6px 12px', borderRadius: 8, border: '1px solid #bae6fd', background: '#ffffff', color: '#075985', fontWeight: 700, fontSize: 12, cursor: 'pointer' }}
-          >
-            + 2 min
-          </button>
         </div>
       </div>
       <div style={{ fontWeight: 800, fontSize: 20, color: '#0f172a', marginBottom: 16, letterSpacing: '-0.01em' }}>Resumen de tu reserva</div>

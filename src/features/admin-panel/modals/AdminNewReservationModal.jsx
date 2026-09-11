@@ -54,7 +54,11 @@ export default function AdminNewReservationModal({ state, actions }) {
         <input type="text" value={adminForm.nombre} onChange={(e) => actions.setAdminFormField('nombre', e.target.value)} placeholder="Nombre completo" style={fieldStyle} />
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 14 }}>
           <input type="text" value={adminForm.documento} onChange={(e) => actions.setAdminFormField('documento', e.target.value)} placeholder="DNI" style={fieldStyle} />
-          <input type="text" value={adminForm.telefono} onChange={(e) => actions.setAdminFormField('telefono', e.target.value)} placeholder="Teléfono" style={fieldStyle} />
+          <input
+            type="tel" inputMode="numeric" maxLength={9} value={adminForm.telefono}
+            onChange={(e) => actions.setAdminFormField('telefono', e.target.value.replace(/\D/g, '').slice(0, 9))}
+            placeholder="Teléfono" style={fieldStyle}
+          />
         </div>
       </div>
       <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>

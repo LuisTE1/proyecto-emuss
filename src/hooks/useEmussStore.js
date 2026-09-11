@@ -551,6 +551,22 @@ export function useEmussStore() {
     patchState((s) => ({ authForm: { ...s.authForm, [field]: value } }));
   }, [patchState]);
 
+  // Las reservas se traen una sola vez al montar la app, con la sesión que
+  // hubiera en ese momento (RLS las filtra según quién esté logueado). Si
+  // alguien inicia sesión DESPUÉS de ese primer fetch (el caso normal: la
+  // app carga como anónimo y recién ahí la persona hace login), esa
+  // reserva anónima no ve nada de nadie — así que había que refrescar la
+  // lista con la sesión ya activa, o el panel admin y "Mis reservas"
+  // quedaban vacíos hasta recargar la página a mano.
+  const refreshReservationsForSession = useCallback(async () => {
+    try {
+      const reservations = await fetchReservations();
+      patchState({ reservations });
+    } catch {
+      patchState({ globalError: 'No se pudieron cargar tus reservas.' });
+    }
+  }, [patchState]);
+
   const submitLogin = useCallback(async () => {
     const f = state.authForm;
     if (!f.correo.trim() || !f.password.trim()) {
@@ -561,11 +577,12 @@ export function useEmussStore() {
     try {
       const session = await signInWithPassword({ correo: f.correo, password: f.password });
       patchState({ session, authLoading: false, view: session.type === 'admin' ? 'admin' : 'account', authForm: { ...EMPTY_AUTH_FORM } });
+      await refreshReservationsForSession();
       if (session.type === 'admin') await loadAdminData();
     } catch (err) {
       patchState({ authLoading: false, authError: friendlyAuthError(err) });
     }
-  }, [state.authForm, patchState, loadAdminData]);
+  }, [state.authForm, patchState, loadAdminData, refreshReservationsForSession]);
 
   const submitRegister = useCallback(async () => {
     const f = state.authForm;
@@ -581,6 +598,7 @@ export function useEmussStore() {
     try {
       const session = await signUpClient({ nombre: f.nombre, correo: f.correo, password: f.password, dni: f.dni });
       patchState({ session, authLoading: false, view: 'account', authForm: { ...EMPTY_AUTH_FORM } });
+      await refreshReservationsForSession();
     } catch (err) {
       if (err.message === 'EMAIL_CONFIRMATION_REQUIRED') {
         patchState({ authLoading: false, authError: friendlyAuthError(err), authMode: 'login', authForm: { ...EMPTY_AUTH_FORM, correo: f.correo } });
@@ -588,11 +606,14 @@ export function useEmussStore() {
       }
       patchState({ authLoading: false, authError: friendlyAuthError(err) });
     }
-  }, [state.authForm, patchState]);
+  }, [state.authForm, patchState, refreshReservationsForSession]);
 
   const logout = useCallback(() => {
     signOut().catch(() => {});
-    patchState({ session: null, view: 'public', rbacUsers: [] });
+    // Limpia las reservas de la sesión que se acaba de ir — si era admin o
+    // cliente, esa lista tenía datos que ya no le corresponden a quien
+    // siga usando esta pestaña (por privacidad, no solo prolijidad).
+    patchState({ session: null, view: 'public', rbacUsers: [], reservations: [] });
   }, [patchState]);
 
   // ---- panel admin ----

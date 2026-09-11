@@ -6,6 +6,7 @@ import PublicSite from './features/public-site/PublicSite';
 import AdminPanel from './features/admin-panel/AdminPanel';
 import ClientAccountView from './features/client-account/ClientAccountView';
 import PublicSiteModals from './features/public-site/modals/PublicSiteModals';
+import PublicCancelModal from './features/public-site/modals/PublicCancelModal';
 
 export default function App() {
   const { state, actions } = useEmussStore();
@@ -36,6 +37,13 @@ export default function App() {
       {state.view === 'admin' && <AdminPanel state={state} actions={actions} />}
 
       <PublicSiteModals state={state} actions={actions} />
+      {state.publicCancelModal && (
+        <PublicCancelModal
+          modal={state.publicCancelModal}
+          onSubmit={actions.submitPublicCancel}
+          onClose={actions.closePublicCancelModal}
+        />
+      )}
     </div>
   );
 }

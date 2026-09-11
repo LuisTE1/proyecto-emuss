@@ -38,3 +38,10 @@ export async function updateAdminSede(id, sedeId) {
   if (error) throw error;
   return mapRow(data);
 }
+
+// Quita el acceso de administrador (borra la fila de admin_users): la
+// cuenta de Auth de la persona sigue existiendo, solo deja de ser admin.
+export async function removeAdminUser(id) {
+  const { error } = await supabase.from('admin_users').delete().eq('id', id);
+  if (error) throw error;
+}

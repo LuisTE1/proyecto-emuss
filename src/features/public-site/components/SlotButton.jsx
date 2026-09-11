@@ -3,7 +3,7 @@ import { STATUS_STYLE } from '../../../services/sedesService';
 export default function SlotButton({ slot }) {
   const st = STATUS_STYLE[slot.status];
   const isReservado = slot.status === 'reservado';
-  const isPasado = slot.status === 'pasado';
+  const isPasado = slot.status === 'pasado' || slot.status === 'cerrado';
   const isDisabled = isReservado || isPasado;
 
   const style = {

@@ -130,6 +130,14 @@ export default function ReservationFormModal({
             <input type="email" value={form.correo} onChange={(e) => onChangeField('correo', e.target.value)} placeholder="tu@correo.com" style={fieldStyle} />
           </div>
         </div>
+        <div>
+          <label style={labelStyle}>Contacto de emergencia (un teléfono distinto al tuyo)</label>
+          <input
+            type="tel" inputMode="numeric" maxLength={9} value={form.contactoEmergencia}
+            onChange={(e) => onChangeField('contactoEmergencia', e.target.value.replace(/\D/g, '').slice(0, 9))}
+            placeholder="9********" style={fieldStyle}
+          />
+        </div>
       </div>
 
       <div style={{ background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 16, padding: 18, marginBottom: 24 }}>

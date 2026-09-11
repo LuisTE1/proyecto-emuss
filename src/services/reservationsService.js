@@ -55,6 +55,7 @@ export function mapReservationRow(row) {
     clientId: row.client_id,
     metodoPago: row.metodo_pago,
     acompanantes: row.acompanantes || [],
+    contactoEmergencia: row.contacto_emergencia || '',
     createdAt: row.created_at,
   };
 }
@@ -95,10 +96,12 @@ export async function confirmReservationViaLock(reservation, clientId, holdId) {
     p_client_id: clientId ?? null,
     p_metodo_pago: reservation.metodoPago || 'efectivo',
     p_acompanantes: reservation.acompanantes || [],
+    p_contacto_emergencia: reservation.contactoEmergencia || '',
   });
   if (error) {
     if (error.message?.includes('slot_full')) throw new Error('SLOT_FULL');
     if (error.message?.includes('hold_already_used')) throw new Error('DUPLICATE_SUBMIT');
+    if (error.message?.includes('sede_closed')) throw new Error('SEDE_CLOSED');
     throw error;
   }
   return mapReservationRow(data);
@@ -112,5 +115,21 @@ export async function cancelReservationByCode(code) {
     .select()
     .single();
   if (error) throw error;
+  return mapReservationRow(data);
+}
+
+// Cancelación pública (desde el enlace del correo, con o sin sesión): la
+// base de datos exige que el DNI o correo coincidan con los de esa reserva
+// puntual — el código solo no basta, es secuencial y adivinable.
+export async function cancelReservationPublic(code, dniOrCorreo) {
+  const { data, error } = await supabase.rpc('cancel_reservation_public', {
+    p_code: code,
+    p_dni_or_correo: dniOrCorreo,
+  });
+  if (error) {
+    if (error.message?.includes('reservation_not_found')) throw new Error('NOT_FOUND');
+    if (error.message?.includes('identity_mismatch')) throw new Error('IDENTITY_MISMATCH');
+    throw error;
+  }
   return mapReservationRow(data);
 }

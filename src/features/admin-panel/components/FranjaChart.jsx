@@ -6,7 +6,7 @@ export default function FranjaChart({ bars }) {
         {bars.map((fb) => (
           <div key={fb.hour} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, minWidth: 44, height: '100%', justifyContent: 'flex-end' }}>
             <span style={{ fontWeight: 700, fontSize: 11.5, color: '#0f172a' }}>{fb.count}</span>
-            <div style={{ width: 30, height: fb.heightPx, background: '#818cf8', borderRadius: '8px 8px 0 0' }} />
+            <div style={{ width: 30, height: fb.heightPx, background: 'linear-gradient(180deg,#818cf8,#c7d2fe)', borderRadius: '8px 8px 2px 2px' }} />
             <span style={{ fontSize: 10.5, color: '#94a3b8', fontWeight: 600 }}>{fb.hour}</span>
           </div>
         ))}

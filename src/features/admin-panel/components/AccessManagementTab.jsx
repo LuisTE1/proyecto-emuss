@@ -9,8 +9,19 @@ const selectStyle = { padding: '7px 10px', borderRadius: 8, border: '1.5px solid
 export default function AccessManagementTab({ state, actions }) {
   const rows = buildRbacRows(state.rbacUsers, actions);
   const sedeOptions = buildSedeSelectOptions();
-  // MAQUETA VISUAL: el modal ABAC (abajo) aún no persiste en rbacService.
   const [editingUser, setEditingUser] = useState(null);
+
+  const handleSave = async ({ rol, sedeId }) => {
+    await actions.updateRbacRol(editingUser.id, rol);
+    if (rol !== 'Super Admin') await actions.updateRbacSede(editingUser.id, sedeId);
+    setEditingUser(null);
+  };
+
+  const handleDelete = async () => {
+    if (!window.confirm(`¿Quitar el acceso de administrador a ${editingUser.nombre}?`)) return;
+    await actions.removeRbacUser(editingUser.id);
+    setEditingUser(null);
+  };
 
   return (
     <div style={{ background: '#ffffff', border: '1px solid #f1f5f9', borderRadius: 20, padding: 28, boxShadow: '0 4px 24px rgba(15,23,42,0.04)' }}>
@@ -50,10 +61,9 @@ export default function AccessManagementTab({ state, actions }) {
                 <td style={{ padding: '10px 8px' }}>
                   <button
                     onClick={() => setEditingUser(u)}
-                    title="Vista previa del panel ABAC (maqueta)"
                     style={{ padding: '6px 12px', borderRadius: 8, border: '1.5px solid #c7d2fe', background: '#eef2ff', color: '#3730a3', fontWeight: 700, fontSize: 11.5, cursor: 'pointer', whiteSpace: 'nowrap' }}
                   >
-                    Editar (ABAC)
+                    Editar
                   </button>
                 </td>
               </tr>
@@ -66,8 +76,8 @@ export default function AccessManagementTab({ state, actions }) {
         <EditAdminUserModal
           user={editingUser}
           onCancel={() => setEditingUser(null)}
-          onSave={() => setEditingUser(null)}
-          onDelete={() => setEditingUser(null)}
+          onSave={handleSave}
+          onDelete={handleDelete}
         />
       )}
     </div>

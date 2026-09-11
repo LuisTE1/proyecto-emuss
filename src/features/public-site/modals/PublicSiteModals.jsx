@@ -51,6 +51,7 @@ export default function PublicSiteModals({ state, actions }) {
           accesibilidadLabel={buildAccessibilityLabel(state.form)}
           metodoPagoLabel={paymentMethodLabel(state.form.metodoPago)}
           acompanantesLabel={!state.form.exclusivo ? (state.form.acompanantes || []).filter(Boolean).join(', ') : ''}
+          contactoEmergencia={state.form.contactoEmergencia}
           confirming={state.confirming}
           onBack={actions.backToForm}
           onConfirm={actions.confirmReserva}

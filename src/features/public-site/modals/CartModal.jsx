@@ -9,7 +9,7 @@ function Row({ label, value, strong }) {
   );
 }
 
-export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadLabel, metodoPagoLabel, acompanantesLabel, confirming, onBack, onConfirm }) {
+export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadLabel, metodoPagoLabel, acompanantesLabel, contactoEmergencia, confirming, onBack, onConfirm }) {
   return (
     <Modal maxWidth={440} scroll>
       <div style={{ background: '#f0f9ff', border: '1px solid #e0f2fe', borderRadius: 16, padding: '14px 18px', marginBottom: 20 }}>
@@ -27,6 +27,7 @@ export default function CartModal({ sedeName, slotTime, personas, rateLabel, rat
         <Row label="Tarifa" value={`${rateLabel} (${ratePrice})`} />
         <Row label="Método de pago" value={metodoPagoLabel} />
         {accesibilidadLabel && <Row label="Accesibilidad" value={accesibilidadLabel} />}
+        <Row label="Contacto de emergencia" value={contactoEmergencia} />
         <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: 4, paddingTop: 10 }}>
           <Row label="Total" value={totalPrecio} strong={{ color: '#4f46e5', fontSize: 16 }} />
         </div>

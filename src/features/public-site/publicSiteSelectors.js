@@ -1,5 +1,5 @@
 import { MAX_MONTHS_AHEAD, MONTH_NAMES, daysInMonth, isPastSlot, pad2, selectedDateLabel, todayISO } from '../../utils/dateUtils';
-import { OMAPED, SEDES, directionsUrlFor, effectiveSlotState, findSedeById, getSlotTimesForDay } from '../../services/sedesService';
+import { OMAPED, SEDES, directionsUrlFor, effectiveSlotState, findSedeById, getSlotTimesForDay, isSedeClosed } from '../../services/sedesService';
 import { priceFor } from '../../services/reservationsService';
 
 const LANE_CAPACITY = 3;
@@ -57,39 +57,45 @@ export function buildCalendar(state, actions) {
 }
 
 export function buildFilteredSedes(state, actions) {
-  const { activeFilter, slotOccupancy, holds, selectedDate, recommendation } = state;
-  return SEDES.filter((sede) => activeFilter === 'todo' || sede.tags.includes(activeFilter)).map((sede) => ({
-    id: sede.id,
-    name: sede.name,
-    address: sede.address,
-    directionsUrl: directionsUrlFor(sede),
-    recommendation: recommendation && recommendation.fromSede === sede.name ? {
-      text: `Este horario está lleno en ${recommendation.fromSede}. ${recommendation.sedeName} tiene ${recommendation.cuposLibres} lugar(es) libre(s) a las ${recommendation.time.split(' - ')[0]}, a ${recommendation.distanceMin} min de aquí.`,
-      ctaLabel: `Ver y reservar en ${recommendation.sedeName}`,
-      onClick: () => actions.goToAlternative(recommendation.sedeId, recommendation.time, recommendation.fecha),
-    } : null,
-    slots: getSlotTimesForDay(sede, selectedDate).map((time) => {
-      const past = isPastSlot(selectedDate, time);
-      const eff = effectiveSlotState(sede, selectedDate, time, slotOccupancy, holds);
-      const status = past ? 'pasado' : eff.status;
-      const label = status === 'pasado'
-        ? 'Horario pasado'
-        : status === 'disponible'
-          ? 'Disponible'
-          : status === 'reservado'
-            ? 'Reservado'
-            : status === 'quedan'
-              ? `${eff.cuposLibres} de ${LANE_CAPACITY} lugares libres`
-              : 'Reservando...';
-      return {
-        time,
-        label,
-        status,
-        onClick: status === 'pasado' ? undefined : () => actions.handleSlotClick(sede, time, selectedDate, status, eff.cuposLibres),
-        onNotify: () => actions.openNotify(sede.id, sede.name, time, selectedDate),
-      };
-    }),
-  }));
+  const { activeFilter, slotOccupancy, holds, selectedDate, recommendation, closures } = state;
+  return SEDES.filter((sede) => activeFilter === 'todo' || sede.tags.includes(activeFilter)).map((sede) => {
+    const closed = isSedeClosed(sede.id, selectedDate, closures);
+    return {
+      id: sede.id,
+      name: sede.name,
+      address: sede.address,
+      directionsUrl: directionsUrlFor(sede),
+      closedNotice: closed ? 'Esta sede no abre en la fecha elegida.' : null,
+      recommendation: recommendation && recommendation.fromSede === sede.name ? {
+        text: `Este horario está lleno en ${recommendation.fromSede}. ${recommendation.sedeName} tiene ${recommendation.cuposLibres} lugar(es) libre(s) a las ${recommendation.time.split(' - ')[0]}, a ${recommendation.distanceMin} min de aquí.`,
+        ctaLabel: `Ver y reservar en ${recommendation.sedeName}`,
+        onClick: () => actions.goToAlternative(recommendation.sedeId, recommendation.time, recommendation.fecha),
+      } : null,
+      slots: getSlotTimesForDay(sede, selectedDate).map((time) => {
+        const past = isPastSlot(selectedDate, time);
+        const eff = effectiveSlotState(sede, selectedDate, time, slotOccupancy, holds);
+        const status = closed ? 'cerrado' : past ? 'pasado' : eff.status;
+        const label = status === 'cerrado'
+          ? 'Sede cerrada'
+          : status === 'pasado'
+            ? 'Horario pasado'
+            : status === 'disponible'
+              ? 'Disponible'
+              : status === 'reservado'
+                ? 'Reservado'
+                : status === 'quedan'
+                  ? `${eff.cuposLibres} de ${LANE_CAPACITY} lugares libres`
+                  : 'Reservando...';
+        return {
+          time,
+          label,
+          status,
+          onClick: (status === 'pasado' || status === 'cerrado') ? undefined : () => actions.handleSlotClick(sede, time, selectedDate, status, eff.cuposLibres),
+          onNotify: () => actions.openNotify(sede.id, sede.name, time, selectedDate),
+        };
+      }),
+    };
+  });
 }
 
 export function buildMapSedes() {
@@ -138,6 +144,7 @@ export function validateReservationForm(form) {
   if (form.tipoDocumento === 'DNI' && !/^\d{8}$/.test(form.documento.trim())) return 'El DNI debe tener 8 dígitos.';
   if (!/^\d{9}$/.test(form.telefono.trim())) return 'Ingresa un teléfono válido de 9 dígitos.';
   if (!/^\S+@\S+\.\S+$/.test(form.correo.trim())) return 'Ingresa un correo electrónico válido.';
+  if (!/^\d{9}$/.test((form.contactoEmergencia || '').trim())) return 'Ingresa un número de contacto de emergencia válido (9 dígitos).';
   if (!form.exclusivo && form.personas > 1) {
     const faltante = (form.acompanantes || []).slice(0, form.personas - 1).some((a) => !a || !a.trim());
     if (faltante || (form.acompanantes || []).length < form.personas - 1) {

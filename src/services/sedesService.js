@@ -28,10 +28,17 @@ export const STATUS_STYLE = {
   reservado: { bg: '#fdf2f4', border: '#fbcfe0', color: '#9d5570', icon: '⛔' },
   enreserva: { bg: '#fffbeb', border: '#fde68a', color: '#92400e', icon: '⏳' },
   pasado: { bg: '#f8fafc', border: '#e2e8f0', color: '#94a3b8', icon: '🚫' },
+  cerrado: { bg: '#f1f5f9', border: '#cbd5e1', color: '#475569', icon: '🔒' },
 };
 
 export function findSedeById(sedeId) {
   return SEDES.find((s) => s.id === sedeId);
+}
+
+// ¿La sede tiene un cierre programado para esa fecha (mantenimiento, día
+// que no abre, etc.)? `closures` es la lista completa cargada del backend.
+export function isSedeClosed(sedeId, fecha, closures = []) {
+  return closures.some((c) => c.sedeId === sedeId && c.fecha === fecha);
 }
 
 // Enlace universal de Google Maps con direcciones: en móvil abre la app de

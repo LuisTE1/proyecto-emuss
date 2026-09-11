@@ -33,19 +33,8 @@ export async function setPanicState(active) {
   if (error) throw error;
 }
 
-export async function fetchActivityLogs(limit = 8) {
-  const { data, error } = await supabase
-    .from('activity_logs')
-    .select('id, text, created_at')
-    .order('created_at', { ascending: false })
-    .limit(limit);
-  if (error) throw error;
-  return (data || []).map((row) => ({
-    time: new Date(row.created_at).toLocaleTimeString('es-PE', { hour: '2-digit', minute: '2-digit' }),
-    text: row.text,
-  }));
-}
-
+// Se sigue guardando como registro histórico en la base (útil para
+// auditoría futura), aunque el panel admin ya no muestra un feed en vivo.
 export async function pushActivityLog(text) {
   const { error } = await supabase.from('activity_logs').insert({ text });
   if (error) throw error;

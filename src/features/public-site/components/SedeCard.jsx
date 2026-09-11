@@ -18,6 +18,11 @@ export default function SedeCard({ sede }) {
         </div>
       </div>
       <div style={{ display: 'grid', gap: 10, padding: '20px 20px 24px' }}>
+        {sede.closedNotice && (
+          <div style={{ background: '#f1f5f9', border: '1px solid #cbd5e1', borderRadius: 12, padding: '10px 14px', fontSize: 12.5, fontWeight: 600, color: '#475569' }}>
+            🔒 {sede.closedNotice}
+          </div>
+        )}
         {sede.slots.map((slot) => <SlotButton key={slot.time} slot={slot} />)}
         {sede.recommendation && (
           <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', borderRadius: 14, padding: 14, marginTop: 4 }}>

@@ -8,9 +8,10 @@ import {
   findSedeById,
   getSlotTimesForDay,
 } from '../services/sedesService';
-import { validateReservationForm } from '../features/public-site/publicSiteSelectors';
+import { buildAccessibilityLabel, validateReservationForm } from '../features/public-site/publicSiteSelectors';
 import {
   cancelReservationByCode,
+  cancelReservationPublic,
   confirmReservationViaLock,
   exportReservationsCSV,
   filterReservationsBySearch,
@@ -19,15 +20,16 @@ import {
 } from '../services/reservationsService';
 import { createHold, fetchActiveHolds, releaseHold, updateHold } from '../services/holdsService';
 import { fetchSlotOccupancy } from '../services/slotOccupancyService';
+import { addClosure, fetchClosures, removeClosure } from '../services/closuresService';
 import { subscribeToAvailabilityRealtime, unsubscribeRealtime } from '../services/realtimeService';
 import {
   fetchAdminUsers,
   inviteAdminUser,
+  removeAdminUser,
   updateAdminRol,
   updateAdminSede,
 } from '../services/rbacService';
 import {
-  fetchActivityLogs,
   fetchMaintenanceStatus,
   fetchPanicState,
   pushActivityLog,
@@ -35,7 +37,7 @@ import {
   toggleMaintenanceStatus,
 } from '../services/adminOpsService';
 import { getCurrentSession, signInWithPassword, signOut, signUpClient } from '../services/authService';
-import { requestNotifyOnFreeSlot, sendReservationEmail } from '../services/notificationsService';
+import { requestNotifyOnFreeSlot, sendCancellationEmail, sendIncidentEmail, sendReservationEmail } from '../services/notificationsService';
 
 const EMPTY_RESERVATION_FORM = {
   tipoDocumento: 'DNI',
@@ -45,6 +47,7 @@ const EMPTY_RESERVATION_FORM = {
   documento: '',
   telefono: '',
   correo: '',
+  contactoEmergencia: '',
   personas: 1,
   exclusivo: false,
   // La tarifa de vecino se autodeclaraba sin ninguna verificación real, así
@@ -116,6 +119,7 @@ const INITIAL_STATE = {
   reservations: [],
   slotOccupancy: [],
   holds: [],
+  closures: [],
   modal: null,
   countdown: 0,
   form: { ...EMPTY_RESERVATION_FORM },
@@ -126,9 +130,9 @@ const INITIAL_STATE = {
   activeCupos: 3,
   panicActive: false,
   maintenance: {},
-  logs: [],
   adminTab: 'analytics',
   adminRange: 'semana',
+  adminSedeFilter: 'todas',
   tableSearch: '',
   adminModal: null,
   adminForm: { sedeId: 'chacarilla', time: '', personas: 1, exclusivo: false, tarifa: 'vecino', nombre: '', documento: '', telefono: '' },
@@ -138,6 +142,7 @@ const INITIAL_STATE = {
   notifyModal: null,
   notifyForm: { contact: '' },
   notifyConfirmed: false,
+  publicCancelModal: null,
   session: null,
   authMode: 'login',
   authForm: { ...EMPTY_AUTH_FORM },
@@ -176,7 +181,6 @@ function upsertByCode(list, row) {
 export function useEmussStore() {
   const [state, setState] = useState(INITIAL_STATE);
   const countdownTimer = useRef(null);
-  const logPollTimer = useRef(null);
 
   const patchState = useCallback((patch) => {
     setState((prev) => ({ ...prev, ...(typeof patch === 'function' ? patch(prev) : patch) }));
@@ -193,10 +197,10 @@ export function useEmussStore() {
   // ---- datos del panel admin (RBAC, mantenimiento, pánico, actividad) ----
   const loadAdminData = useCallback(async () => {
     try {
-      const [rbacUsers, maintenance, panicActive, logs] = await Promise.all([
-        fetchAdminUsers(), fetchMaintenanceStatus(), fetchPanicState(), fetchActivityLogs(),
+      const [rbacUsers, maintenance, panicActive] = await Promise.all([
+        fetchAdminUsers(), fetchMaintenanceStatus(), fetchPanicState(),
       ]);
-      patchState({ rbacUsers, maintenance, panicActive, logs });
+      patchState({ rbacUsers, maintenance, panicActive });
     } catch {
       patchState({ globalError: 'No se pudieron cargar los datos del panel admin.' });
     }
@@ -217,10 +221,10 @@ export function useEmussStore() {
     (async () => {
       try {
         const session = await getCurrentSession();
-        const [reservations, slotOccupancy, holds] = await Promise.all([
-          fetchReservations(), fetchSlotOccupancy(), fetchActiveHolds(),
+        const [reservations, slotOccupancy, holds, closures] = await Promise.all([
+          fetchReservations(), fetchSlotOccupancy(), fetchActiveHolds(), fetchClosures(),
         ]);
-        patchState({ reservations, slotOccupancy, holds, session, dataLoading: false });
+        patchState({ reservations, slotOccupancy, holds, closures, session, dataLoading: false });
         if (session?.type === 'admin') await loadAdminData();
       } catch {
         patchState({ dataLoading: false, globalError: 'No se pudo conectar con el backend. Revisa tu configuración de Supabase.' });
@@ -229,12 +233,14 @@ export function useEmussStore() {
   }, [patchState, loadAdminData]);
 
   // Disponibilidad en vivo: cualquier pestaña conectada ve al instante
-  // cuando alguien reserva, cancela, o empieza/deja de reservar un horario.
+  // cuando alguien reserva, cancela, o empieza/deja de reservar un horario,
+  // o cuando un admin cierra/reabre un día.
   useEffect(() => {
     if (!isSupabaseConfigured) return undefined;
     const channel = subscribeToAvailabilityRealtime({
       onSlotOccupancyChange: (row) => patchState((s) => ({ slotOccupancy: upsertByCode(s.slotOccupancy, row) })),
       onHoldsChange: (holds) => patchState({ holds }),
+      onClosuresChange: (closures) => patchState({ closures }),
     });
     return () => unsubscribeRealtime(channel);
   }, [patchState]);
@@ -253,14 +259,19 @@ export function useEmussStore() {
     return () => clearInterval(t);
   }, [patchState]);
 
-  // Refresca el feed de actividad mientras el panel admin está abierto.
+  // Enlace de cancelación desde el correo (`?cancelar=EMUSS-1234`): abre el
+  // modal de cancelación pública apenas carga la app, sin importar si hay
+  // sesión o no, y limpia la URL para que no se reabra con el back/reload.
   useEffect(() => {
-    if (state.view !== 'admin') return undefined;
-    logPollTimer.current = setInterval(() => {
-      fetchActivityLogs().then((logs) => patchState({ logs })).catch(() => {});
-    }, 6000);
-    return () => clearInterval(logPollTimer.current);
-  }, [state.view, patchState]);
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('cancelar');
+    if (code) {
+      patchState({ publicCancelModal: { code, status: 'idle', message: '' } });
+      params.delete('cancelar');
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+      window.history.replaceState({}, '', next);
+    }
+  }, [patchState]);
 
   // ---- navegación / vista ----
   // El acceso al panel admin ya no es un botón público: entra por el mismo
@@ -376,7 +387,7 @@ export function useEmussStore() {
       nombre: nombreCompleto, dni: f.documento || '—', telefono: f.telefono, correo: f.correo, tarifa: f.tarifa, precio,
       necesitaElevador: f.necesitaElevador, necesitaRampa: f.necesitaRampa, necesitaAsistencia: f.necesitaAsistencia,
       vaConCuidador: f.vaConCuidador, notasAccesibilidad: f.notasAccesibilidad,
-      metodoPago: f.metodoPago, acompanantes,
+      metodoPago: f.metodoPago, acompanantes, contactoEmergencia: f.contactoEmergencia,
     };
     try {
       const clientId = state.session?.type === 'client' ? state.session.id : null;
@@ -389,6 +400,8 @@ export function useEmussStore() {
         lastTicket: {
           nombre: reservation.nombre, dni: reservation.dni, code: reservation.code,
           estado: reservation.estado, precio: reservation.precio, metodoPago: reservation.metodoPago,
+          personas: reservation.personas, exclusivo: reservation.exclusivo, acompanantes: reservation.acompanantes,
+          contactoEmergencia: reservation.contactoEmergencia,
           necesitaElevador: reservation.necesitaElevador, necesitaRampa: reservation.necesitaRampa,
           necesitaAsistencia: reservation.necesitaAsistencia, vaConCuidador: reservation.vaConCuidador,
         },
@@ -397,6 +410,9 @@ export function useEmussStore() {
       sendReservationEmail({
         to: reservation.correo, sedeName: sede.name, dateLabel: dayLabel(m.fecha),
         slotTime: m.slotTime, code: reservation.code, nombre: reservation.nombre,
+        personas: reservation.personas, exclusivo: reservation.exclusivo,
+        acompanantes: reservation.acompanantes, metodoPago: reservation.metodoPago, precio: reservation.precio,
+        notasAccesibilidad: reservation.notasAccesibilidad, accesibilidadLabel: buildAccessibilityLabel(reservation),
       }).catch(() => {});
     } catch (err) {
       if (err.message === 'SLOT_FULL') {
@@ -419,6 +435,11 @@ export function useEmussStore() {
         slotOccupancy: upsertByCode(s.slotOccupancy, occupancyRowFor(updated)),
       }));
       pushActivityLog(`Reserva ${code} cancelada.`).catch(() => {});
+      const sede = findSedeById(updated.sedeId);
+      sendCancellationEmail({
+        to: updated.correo, nombre: updated.nombre, sedeName: sede?.name || updated.sedeId,
+        dateLabel: dayLabel(updated.fecha), slotTime: updated.time, code: updated.code,
+      }).catch(() => {});
     } catch {
       patchState({ globalError: 'No se pudo cancelar la reserva.' });
     }
@@ -447,6 +468,8 @@ export function useEmussStore() {
         lastTicket: {
           nombre: r.nombre, dni: r.dni, code: r.code,
           estado: r.estado, precio: r.precio, metodoPago: r.metodoPago,
+          personas: r.personas, exclusivo: r.exclusivo, acompanantes: r.acompanantes,
+          contactoEmergencia: r.contactoEmergencia,
           necesitaElevador: r.necesitaElevador, necesitaRampa: r.necesitaRampa,
           necesitaAsistencia: r.necesitaAsistencia, vaConCuidador: r.vaConCuidador,
         },
@@ -492,6 +515,35 @@ export function useEmussStore() {
       patchState({ globalError: 'No se pudo registrar el aviso.' });
     }
   }, [state.notifyModal, state.notifyForm, patchState]);
+
+  const closePublicCancelModal = useCallback(() => patchState({ publicCancelModal: null }), [patchState]);
+
+  const submitPublicCancel = useCallback(async (dniOrCorreo) => {
+    const code = state.publicCancelModal?.code;
+    if (!code) return;
+    patchState((s) => ({ publicCancelModal: { ...s.publicCancelModal, status: 'loading', message: '' } }));
+    try {
+      const updated = await cancelReservationPublic(code, dniOrCorreo);
+      patchState((s) => ({
+        publicCancelModal: { ...s.publicCancelModal, status: 'success', message: '' },
+        reservations: s.reservations.map((r) => (r.code === code ? updated : r)),
+        slotOccupancy: upsertByCode(s.slotOccupancy, occupancyRowFor(updated)),
+      }));
+      const sede = findSedeById(updated.sedeId);
+      sendCancellationEmail({
+        to: updated.correo, nombre: updated.nombre, sedeName: sede?.name || updated.sedeId,
+        dateLabel: dayLabel(updated.fecha), slotTime: updated.time, code: updated.code,
+      }).catch(() => {});
+      pushActivityLog(`Reserva ${code} cancelada (enlace público).`).catch(() => {});
+    } catch (err) {
+      const message = err.message === 'NOT_FOUND'
+        ? 'No encontramos una reserva con ese código.'
+        : err.message === 'IDENTITY_MISMATCH'
+          ? 'El DNI o correo no coincide con esta reserva.'
+          : 'No se pudo cancelar la reserva. Intenta de nuevo.';
+      patchState((s) => ({ publicCancelModal: { ...s.publicCancelModal, status: 'error', message } }));
+    }
+  }, [patchState, state.publicCancelModal]);
 
   // ---- cuenta de cliente / admin (login / registro) ----
   const setAuthMode = useCallback((mode) => patchState({ authMode: mode, authError: '' }), [patchState]);
@@ -540,7 +592,7 @@ export function useEmussStore() {
 
   const logout = useCallback(() => {
     signOut().catch(() => {});
-    patchState({ session: null, view: 'public', rbacUsers: [], logs: [] });
+    patchState({ session: null, view: 'public', rbacUsers: [] });
   }, [patchState]);
 
   // ---- panel admin ----
@@ -564,8 +616,45 @@ export function useEmussStore() {
     }
   }, [state.maintenance, patchState]);
 
+  // Cierra un día completo para una sede (no abre / mantenimiento) — bloquea
+  // todos sus horarios en el sitio público y en el candado del backend.
+  const addSedeClosure = useCallback(async (sedeId, fecha, motivo) => {
+    try {
+      const closure = await addClosure({ sedeId, fecha, motivo });
+      patchState((s) => ({ closures: [...s.closures, closure] }));
+    } catch (err) {
+      patchState({ globalError: err.message?.includes('duplicate') ? 'Esa sede ya está cerrada ese día.' : 'No se pudo cerrar el día.' });
+    }
+  }, [patchState]);
+
+  // Avisa por correo a todas las reservas confirmadas de un horario puntual
+  // (sede + fecha + hora) — para cuando algo pasa justo ahí y hay que
+  // avisarle a los que están reservados en ese momento, no a toda la red.
+  const notifyIncident = useCallback(async (sedeId, fecha, time, motivo) => {
+    const sede = findSedeById(sedeId);
+    const affected = state.reservations.filter(
+      (r) => r.estado === 'confirmada' && r.sedeId === sedeId && r.fecha === fecha && r.time === time && r.correo
+    );
+    await Promise.all(affected.map((r) => sendIncidentEmail({
+      to: r.correo, nombre: r.nombre, sedeName: sede?.name || sedeId,
+      dateLabel: dayLabel(fecha), slotTime: time, code: r.code, motivo,
+    }).catch(() => {})));
+    pushActivityLog(`Aviso de incidente enviado — ${sede?.name || sedeId}, ${time} (${affected.length} reserva(s)).`).catch(() => {});
+    return affected.length;
+  }, [state.reservations]);
+
+  const removeSedeClosure = useCallback(async (id) => {
+    try {
+      await removeClosure(id);
+      patchState((s) => ({ closures: s.closures.filter((c) => c.id !== id) }));
+    } catch {
+      patchState({ globalError: 'No se pudo reabrir el día.' });
+    }
+  }, [patchState]);
+
   const setAdminTab = useCallback((tab) => patchState({ adminTab: tab }), [patchState]);
   const setAdminRange = useCallback((range) => patchState({ adminRange: range }), [patchState]);
+  const setAdminSedeFilter = useCallback((sedeId) => patchState({ adminSedeFilter: sedeId }), [patchState]);
   const setTableSearch = useCallback((value) => patchState({ tableSearch: value }), [patchState]);
 
   const exportCSV = useCallback(() => {
@@ -659,6 +748,15 @@ export function useEmussStore() {
     }
   }, [patchState]);
 
+  const removeRbacUser = useCallback(async (id) => {
+    try {
+      await removeAdminUser(id);
+      patchState((s) => ({ rbacUsers: s.rbacUsers.filter((u) => u.id !== id) }));
+    } catch {
+      patchState({ globalError: 'No se pudo quitar el acceso de administrador.' });
+    }
+  }, [patchState]);
+
   // ---- formulario de reserva (público) ----
   const setFormField = useCallback((field, value) => {
     const isHoldField = field === 'personas' || field === 'exclusivo';
@@ -716,6 +814,8 @@ export function useEmussStore() {
       closeNotify,
       setNotifyContact,
       submitNotify,
+      closePublicCancelModal,
+      submitPublicCancel,
       setAuthMode,
       setAuthField,
       submitLogin,
@@ -733,8 +833,12 @@ export function useEmussStore() {
       setAcompanante,
       togglePanic,
       toggleMaintenance,
+      addSedeClosure,
+      removeSedeClosure,
+      notifyIncident,
       setAdminTab,
       setAdminRange,
+      setAdminSedeFilter,
       setTableSearch,
       exportCSV,
       openAdminNew,
@@ -748,6 +852,7 @@ export function useEmussStore() {
       submitRbacAdd,
       updateRbacRol,
       updateRbacSede,
+      removeRbacUser,
     },
   };
 }

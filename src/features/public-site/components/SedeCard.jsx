@@ -5,7 +5,17 @@ export default function SedeCard({ sede }) {
     <div style={{ borderRadius: 20, background: '#ffffff', boxShadow: '0 4px 24px rgba(15,23,42,0.04)', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
       <div style={{ padding: '24px 24px 20px', borderBottom: '1px solid #f1f5f9' }}>
         <div style={{ fontWeight: 800, fontSize: 16.5, marginBottom: 4, color: '#0f172a', letterSpacing: '-0.01em' }}>{sede.name}</div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>{sede.address}</div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>{sede.address}</div>
+          <a
+            href={sede.directionsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: '#4f46e5', textDecoration: 'none', whiteSpace: 'nowrap' }}
+          >
+            📍 Cómo llegar
+          </a>
+        </div>
       </div>
       <div style={{ display: 'grid', gap: 10, padding: '20px 20px 24px' }}>
         {sede.slots.map((slot) => <SlotButton key={slot.time} slot={slot} />)}

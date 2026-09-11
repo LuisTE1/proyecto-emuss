@@ -3,7 +3,17 @@ export default function OmapedCard({ omaped }) {
     <div style={{ borderRadius: 20, background: '#ffffff', boxShadow: '0 4px 24px rgba(15,23,42,0.04)', border: '1px solid #f1f5f9', overflow: 'hidden' }}>
       <div style={{ padding: '24px 24px 20px', borderBottom: '1px solid #f1f5f9' }}>
         <div style={{ fontWeight: 800, fontSize: 16.5, marginBottom: 4, color: '#0f172a', letterSpacing: '-0.01em' }}>{omaped.name}</div>
-        <div style={{ fontSize: 12, color: '#94a3b8' }}>{omaped.address}</div>
+        <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 10 }}>
+          <div style={{ fontSize: 12, color: '#94a3b8' }}>{omaped.address}</div>
+          <a
+            href={omaped.directionsUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ flexShrink: 0, fontSize: 11.5, fontWeight: 700, color: '#4f46e5', textDecoration: 'none', whiteSpace: 'nowrap' }}
+          >
+            📍 Cómo llegar
+          </a>
+        </div>
       </div>
       <div style={{ padding: '20px 20px 24px', display: 'grid', gap: 14 }}>
         <span style={{ display: 'inline-flex', width: 'fit-content', background: '#f0f9ff', color: '#075985', border: '1px solid #e0f2fe', borderRadius: 999, padding: '6px 12px', fontSize: 11.5, fontWeight: 700 }}>

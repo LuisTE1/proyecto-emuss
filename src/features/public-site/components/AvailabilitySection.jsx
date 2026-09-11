@@ -17,7 +17,7 @@ export default function AvailabilitySection({ calendar, filters, sedes, omaped }
         </div>
 
         <div style={{ maxWidth: 900, margin: '0 auto 40px', background: '#fffbeb', borderRadius: 16, padding: '18px 24px', fontWeight: 600, fontSize: 14, color: '#92400e', display: 'flex', alignItems: 'center', gap: 12, border: '1px solid #fef3c7' }}>
-          <span style={{ fontSize: 18 }}>⏳</span> Los carriles en <strong>ámbar</strong> tienen 3 minutos para liberarse si no se completa la compra.
+          <span style={{ fontSize: 18 }}>⏳</span> Los carriles en <strong>ámbar</strong> tienen 8 minutos para liberarse si no se completa la compra.
         </div>
 
         <FilterBar filters={filters} />

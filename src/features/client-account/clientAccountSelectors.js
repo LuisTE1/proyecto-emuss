@@ -64,6 +64,29 @@ export function buildAccountReservations(reservations, session, actions) {
     });
 }
 
+// Notificaciones reales (no un mock): un evento por cada reserva propia,
+// confirmada o cancelada, más reciente primero — así lo que se ve aquí es
+// exactamente lo que pasó, no ejemplos inventados.
+export function buildAccountNotifications(reservations, session) {
+  const mine = clientReservations(reservations, session);
+  return mine
+    .slice()
+    .sort((a, b) => new Date(b.createdAt || 0) - new Date(a.createdAt || 0))
+    .slice(0, 10)
+    .map((r) => {
+      const sede = findSedeById(r.sedeId);
+      const sedeName = sede ? sede.name : r.sedeId;
+      const cancelled = r.estado !== 'confirmada';
+      return {
+        id: r.code,
+        cancelled,
+        title: cancelled ? 'Reserva cancelada' : 'Reserva confirmada',
+        text: `${sedeName} · ${dayLabel(r.day)} · ${r.time} · ${r.code}`,
+        time: r.createdAt ? new Date(r.createdAt).toLocaleString('es-PE', { dateStyle: 'medium', timeStyle: 'short' }) : '',
+      };
+    });
+}
+
 // Recomendación real: el horario (sede + hora) que más se repite en el
 // historial confirmado del cliente, para ofrecerle repetirlo.
 export function buildAccountRecommendation(reservations, session) {

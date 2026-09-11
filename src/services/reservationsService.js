@@ -53,6 +53,9 @@ export function mapReservationRow(row) {
     vaConCuidador: row.va_con_cuidador,
     notasAccesibilidad: row.notas_accesibilidad,
     clientId: row.client_id,
+    metodoPago: row.metodo_pago,
+    acompanantes: row.acompanantes || [],
+    createdAt: row.created_at,
   };
 }
 
@@ -90,9 +93,12 @@ export async function confirmReservationViaLock(reservation, clientId, holdId) {
     p_va_con_cuidador: reservation.vaConCuidador,
     p_notas: reservation.notasAccesibilidad,
     p_client_id: clientId ?? null,
+    p_metodo_pago: reservation.metodoPago || 'efectivo',
+    p_acompanantes: reservation.acompanantes || [],
   });
   if (error) {
     if (error.message?.includes('slot_full')) throw new Error('SLOT_FULL');
+    if (error.message?.includes('hold_already_used')) throw new Error('DUPLICATE_SUBMIT');
     throw error;
   }
   return mapReservationRow(data);

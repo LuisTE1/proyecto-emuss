@@ -9,7 +9,7 @@ function Row({ label, value, strong }) {
   );
 }
 
-export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadLabel, onBack, onConfirm }) {
+export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadLabel, metodoPagoLabel, acompanantesLabel, confirming, onBack, onConfirm }) {
   return (
     <Modal maxWidth={440} scroll>
       <div style={{ background: '#f0f9ff', border: '1px solid #e0f2fe', borderRadius: 16, padding: '14px 18px', marginBottom: 20 }}>
@@ -23,15 +23,27 @@ export default function CartModal({ sedeName, slotTime, personas, rateLabel, rat
         <Row label="Sede" value={sedeName} />
         <Row label="Horario" value={`${slotTime} (1 hora)`} />
         <Row label="Personas" value={personas} />
+        {acompanantesLabel && <Row label="Acompañantes" value={acompanantesLabel} />}
         <Row label="Tarifa" value={`${rateLabel} (${ratePrice})`} />
+        <Row label="Método de pago" value={metodoPagoLabel} />
         {accesibilidadLabel && <Row label="Accesibilidad" value={accesibilidadLabel} />}
         <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: 4, paddingTop: 10 }}>
           <Row label="Total" value={totalPrecio} strong={{ color: '#4f46e5', fontSize: 16 }} />
         </div>
       </div>
       <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
-        <button onClick={onBack} style={{ padding: '13px 22px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Volver</button>
-        <button onClick={onConfirm} style={{ padding: '13px 22px', borderRadius: 12, border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 8px 20px rgba(79,70,229,0.28)' }}>Confirmar reserva</button>
+        <button onClick={onBack} disabled={confirming} style={{ padding: '13px 22px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: 14, cursor: confirming ? 'default' : 'pointer' }}>Volver</button>
+        <button
+          onClick={onConfirm}
+          disabled={confirming}
+          style={{
+            padding: '13px 22px', borderRadius: 12, border: 'none', color: '#ffffff', fontWeight: 700, fontSize: 14,
+            cursor: confirming ? 'default' : 'pointer', boxShadow: '0 8px 20px rgba(79,70,229,0.28)',
+            background: confirming ? '#a5b4fc' : '#4f46e5',
+          }}
+        >
+          {confirming ? 'Confirmando…' : 'Confirmar reserva'}
+        </button>
       </div>
     </Modal>
   );

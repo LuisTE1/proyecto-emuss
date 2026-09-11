@@ -1,4 +1,4 @@
-import { buildAccessibilityLabel, buildCountdownLabel, buildModalPricing, buildPersonaOptions } from '../publicSiteSelectors';
+import { buildAccessibilityLabel, buildCountdownLabel, buildModalPricing, buildPersonaOptions, paymentMethodLabel } from '../publicSiteSelectors';
 import QueueModal from './QueueModal';
 import NotifyModal from './NotifyModal';
 import ReservationFormModal from './ReservationFormModal';
@@ -27,12 +27,13 @@ export default function PublicSiteModals({ state, actions }) {
           sedeName={pricing.modalSedeName}
           slotTime={pricing.modalSlotTime}
           countdownLabel={buildCountdownLabel(state.countdown)}
-          tarifaVecino={pricing.tarifaVecino}
-          tarifaRegular={pricing.tarifaRegular}
           totalPrecio={pricing.totalPrecio}
+          isPrefilled={state.session?.type === 'client'}
+          formError={state.formError}
           form={state.form}
           personaOptions={buildPersonaOptions(state.activeCupos)}
           onChangeField={actions.setFormField}
+          onChangeAcompanante={actions.setAcompanante}
           onCancel={actions.closeModal}
           onSubmit={actions.goToCart}
         />
@@ -48,6 +49,9 @@ export default function PublicSiteModals({ state, actions }) {
           totalPrecio={pricing.totalPrecio}
           countdownLabel={buildCountdownLabel(state.countdown)}
           accesibilidadLabel={buildAccessibilityLabel(state.form)}
+          metodoPagoLabel={paymentMethodLabel(state.form.metodoPago)}
+          acompanantesLabel={!state.form.exclusivo ? (state.form.acompanantes || []).filter(Boolean).join(', ') : ''}
+          confirming={state.confirming}
           onBack={actions.backToForm}
           onConfirm={actions.confirmReserva}
         />

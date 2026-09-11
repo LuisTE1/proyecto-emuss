@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { dayLabel } from '../utils/dateUtils';
+import { dayLabel, realTodayDay } from '../utils/dateUtils';
 import { isSupabaseConfigured } from '../services/supabaseClient';
 import {
   SEDES,
@@ -8,6 +8,7 @@ import {
   findSedeById,
   getSlotTimesForDay,
 } from '../services/sedesService';
+import { validateReservationForm } from '../features/public-site/publicSiteSelectors';
 import {
   cancelReservationByCode,
   confirmReservationViaLock,
@@ -46,13 +47,40 @@ const EMPTY_RESERVATION_FORM = {
   correo: '',
   personas: 1,
   exclusivo: false,
-  tarifa: 'vecino',
+  // La tarifa de vecino se autodeclaraba sin ninguna verificación real, así
+  // que en el formulario público ya no se pide — siempre se cobra la
+  // tarifa pública (el panel admin sí puede aplicar la de vecino, ahí un
+  // encargado puede pedir el comprobante de domicilio en el mostrador).
+  tarifa: 'regular',
+  metodoPago: 'efectivo',
+  acompanantes: [],
   necesitaElevador: false,
   necesitaRampa: false,
   necesitaAsistencia: false,
   vaConCuidador: false,
   notasAccesibilidad: '',
 };
+
+// Divide el nombre completo de la cuenta en nombres / apellido paterno para
+// precargar el formulario — no es perfecto (no distingue apellido materno)
+// pero evita que alguien logueado tenga que volver a escribir todo.
+function splitFullName(fullName) {
+  const parts = (fullName || '').trim().split(/\s+/);
+  return { nombres: parts[0] || '', apellidoPaterno: parts.slice(1).join(' ') || '' };
+}
+
+function prefillFormFromSession(session) {
+  if (!session || session.type !== 'client') return { ...EMPTY_RESERVATION_FORM };
+  const { nombres, apellidoPaterno } = splitFullName(session.nombre);
+  return {
+    ...EMPTY_RESERVATION_FORM,
+    nombres,
+    apellidoPaterno,
+    documento: session.dni || '',
+    telefono: session.telefono || '',
+    correo: session.correo || '',
+  };
+}
 
 const EMPTY_AUTH_FORM = { nombre: '', correo: '', password: '', dni: '' };
 
@@ -68,13 +96,15 @@ const INITIAL_STATE = {
   view: 'public',
   activeFilter: 'todo',
   calendarOpen: false,
-  selectedDay: 9,
+  selectedDay: realTodayDay() ?? 9,
   reservations: [],
   slotOccupancy: [],
   holds: [],
   modal: null,
   countdown: 0,
   form: { ...EMPTY_RESERVATION_FORM },
+  formError: '',
+  confirming: false,
   lastTicket: null,
   recommendation: null,
   activeCupos: 3,
@@ -253,13 +283,14 @@ export function useEmussStore() {
       refreshAvailability();
       return;
     }
-    patchState({
+    patchState((s) => ({
       modal: { type: 'form', sedeId: sede.id, sedeName: sede.name, slotTime: time, day, code: null, holdId: hold.id },
       countdown: RESERVATION_HOLD_SECONDS,
       activeCupos: cuposLibres,
-      form: { ...EMPTY_RESERVATION_FORM },
+      form: prefillFormFromSession(s.session),
+      formError: '',
       recommendation: null,
-    });
+    }));
     countdownTimer.current = setInterval(() => {
       patchState((s) => {
         if (s.countdown <= 1) {
@@ -272,21 +303,39 @@ export function useEmussStore() {
     }, 1000);
   }, [clearCountdownTimer, patchState, refreshAvailability]);
 
-  const goToCart = useCallback(() => patchState((s) => ({ modal: { ...s.modal, type: 'cart' } })), [patchState]);
+  const goToCart = useCallback(() => {
+    const error = validateReservationForm(state.form);
+    if (error) {
+      patchState({ formError: error });
+      return;
+    }
+    patchState((s) => ({ modal: { ...s.modal, type: 'cart' }, formError: '' }));
+  }, [patchState, state.form]);
   const backToForm = useCallback(() => patchState((s) => ({ modal: { ...s.modal, type: 'form' } })), [patchState]);
 
+  // Cierre atómico contra doble clic: una ref (no un estado async) porque un
+  // segundo clic puede llegar antes de que React re-renderice con
+  // `confirming: true` — ver el bug real EMUSS-1065/1066 (dos reservas
+  // idénticas creadas a medio segundo de diferencia).
+  const confirmingRef = useRef(false);
+
   const confirmReserva = useCallback(async () => {
+    if (confirmingRef.current) return;
+    confirmingRef.current = true;
+    patchState({ confirming: true });
     clearCountdownTimer();
     const m = state.modal;
     const f = state.form;
     const sede = findSedeById(m.sedeId);
     const precio = priceFor(sede, f.tarifa, f.personas, f.exclusivo);
     const nombreCompleto = [f.nombres, f.apellidoPaterno, f.apellidoMaterno].filter(Boolean).join(' ') || 'Invitado EMUSS';
+    const acompanantes = f.exclusivo ? [] : (f.acompanantes || []).slice(0, f.personas - 1).filter(Boolean);
     const payload = {
       sedeId: m.sedeId, day: m.day, time: m.slotTime, personas: Number(f.personas), exclusivo: f.exclusivo,
       nombre: nombreCompleto, dni: f.documento || '—', telefono: f.telefono, correo: f.correo, tarifa: f.tarifa, precio,
       necesitaElevador: f.necesitaElevador, necesitaRampa: f.necesitaRampa, necesitaAsistencia: f.necesitaAsistencia,
       vaConCuidador: f.vaConCuidador, notasAccesibilidad: f.notasAccesibilidad,
+      metodoPago: f.metodoPago, acompanantes,
     };
     try {
       const clientId = state.session?.type === 'client' ? state.session.id : null;
@@ -298,6 +347,7 @@ export function useEmussStore() {
         modal: { ...prev.modal, type: 'ticket', code: reservation.code },
         lastTicket: {
           nombre: reservation.nombre, dni: reservation.dni, code: reservation.code,
+          estado: reservation.estado, precio: reservation.precio, metodoPago: reservation.metodoPago,
           necesitaElevador: reservation.necesitaElevador, necesitaRampa: reservation.necesitaRampa,
           necesitaAsistencia: reservation.necesitaAsistencia, vaConCuidador: reservation.vaConCuidador,
         },
@@ -311,9 +361,12 @@ export function useEmussStore() {
       if (err.message === 'SLOT_FULL') {
         patchState({ globalError: 'Se llenó justo antes de confirmar tu reserva. Elige otro horario.', modal: null });
         refreshAvailability();
-      } else {
+      } else if (err.message !== 'DUPLICATE_SUBMIT') {
         patchState({ globalError: 'No se pudo confirmar la reserva. Intenta de nuevo.' });
       }
+    } finally {
+      confirmingRef.current = false;
+      patchState({ confirming: false });
     }
   }, [clearCountdownTimer, patchState, refreshAvailability, state.modal, state.form, state.session]);
 
@@ -352,6 +405,7 @@ export function useEmussStore() {
         modal: { type: 'ticket', sedeId: r.sedeId, sedeName: findSedeById(r.sedeId)?.name, slotTime: r.time, day: r.day, code: r.code },
         lastTicket: {
           nombre: r.nombre, dni: r.dni, code: r.code,
+          estado: r.estado, precio: r.precio, metodoPago: r.metodoPago,
           necesitaElevador: r.necesitaElevador, necesitaRampa: r.necesitaRampa,
           necesitaAsistencia: r.necesitaAsistencia, vaConCuidador: r.vaConCuidador,
         },
@@ -424,6 +478,10 @@ export function useEmussStore() {
     const f = state.authForm;
     if (!f.nombre.trim() || !f.correo.trim() || !f.password.trim() || !f.dni.trim()) {
       patchState({ authError: 'Completa nombre, correo, DNI y contraseña.' });
+      return;
+    }
+    if (!/^\d{8}$/.test(f.dni.trim())) {
+      patchState({ authError: 'El DNI debe tener 8 dígitos.' });
       return;
     }
     patchState({ authLoading: true, authError: '' });
@@ -566,7 +624,16 @@ export function useEmussStore() {
     const previousValue = state.form[field];
     const holdId = state.modal?.holdId;
 
-    patchState((s) => ({ form: { ...s.form, [field]: value } }));
+    patchState((s) => {
+      const nextForm = { ...s.form, [field]: value };
+      // El arreglo de acompañantes sigue el tamaño de "personas" (personas - 1
+      // acompañantes), conservando lo ya escrito si solo cambia de 3 a 2, etc.
+      if (field === 'personas') {
+        const needed = Math.max(0, Number(value) - 1);
+        nextForm.acompanantes = Array.from({ length: needed }, (_, i) => s.form.acompanantes?.[i] || '');
+      }
+      return { form: nextForm, formError: '' };
+    });
 
     if (!isHoldField || !holdId) return;
 
@@ -582,6 +649,14 @@ export function useEmussStore() {
       }));
     });
   }, [patchState, state.form, state.modal]);
+
+  const setAcompanante = useCallback((index, value) => {
+    patchState((s) => {
+      const acompanantes = s.form.acompanantes.slice();
+      acompanantes[index] = value;
+      return { form: { ...s.form, acompanantes }, formError: '' };
+    });
+  }, [patchState]);
 
   return {
     state,
@@ -612,6 +687,7 @@ export function useEmussStore() {
       confirmReserva,
       cancelReserva,
       setFormField,
+      setAcompanante,
       togglePanic,
       toggleMaintenance,
       setAdminTab,

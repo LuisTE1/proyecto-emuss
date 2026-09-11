@@ -4,7 +4,7 @@ import BenefitsSection from './components/BenefitsSection';
 import AvailabilitySection from './components/AvailabilitySection';
 import PoolsMapSection from './components/PoolsMapSection';
 import { buildCalendar, buildFilteredSedes, buildFilters, buildMapSedes } from './publicSiteSelectors';
-import { FILTER_DEFS, OMAPED } from '../../services/sedesService';
+import { FILTER_DEFS, OMAPED, directionsUrlFor } from '../../services/sedesService';
 
 export default function PublicSite({ state, actions }) {
   return (
@@ -15,7 +15,7 @@ export default function PublicSite({ state, actions }) {
         calendar={buildCalendar(state.selectedDay, state.calendarOpen, actions)}
         filters={buildFilters(FILTER_DEFS, state.activeFilter, actions)}
         sedes={buildFilteredSedes(state, actions)}
-        omaped={OMAPED}
+        omaped={{ ...OMAPED, directionsUrl: directionsUrlFor(OMAPED) }}
       />
       <PoolsMapSection mapSedes={buildMapSedes()} />
       <Footer />

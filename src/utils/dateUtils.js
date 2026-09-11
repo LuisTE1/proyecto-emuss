@@ -33,3 +33,27 @@ export function timeToMinutes(range) {
   const [h, m] = range.split(' - ')[0].split(':').map(Number);
   return h * 60 + m;
 }
+
+// La demo vive en Setiembre 2026: si la fecha real de hoy cae dentro de ese
+// mes, se usa como "hoy" real para bloquear días/horarios ya pasados. Fuera
+// de ese mes (antes o después de la demo) no hay una noción de "hoy" válida
+// en este calendario de un solo mes, así que no se bloquea nada.
+export function isWithinDemoMonth(now = new Date()) {
+  return now.getFullYear() === CALENDAR_YEAR && now.getMonth() === CALENDAR_MONTH_INDEX;
+}
+
+export function realTodayDay(now = new Date()) {
+  return isWithinDemoMonth(now) ? now.getDate() : null;
+}
+
+// ¿Ya pasó (o está empezando) el horario `time` del día `day`, según la hora
+// real del reloj? Si `day` no es el día real de hoy, solo importa si ya
+// pasó la fecha completa.
+export function isPastSlot(day, time, now = new Date()) {
+  const todayDay = realTodayDay(now);
+  if (todayDay == null) return false;
+  if (day < todayDay) return true;
+  if (day > todayDay) return false;
+  const nowMinutes = now.getHours() * 60 + now.getMinutes();
+  return timeToMinutes(time) <= nowMinutes;
+}

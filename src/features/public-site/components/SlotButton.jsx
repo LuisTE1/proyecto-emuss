@@ -3,19 +3,21 @@ import { STATUS_STYLE } from '../../../services/sedesService';
 export default function SlotButton({ slot }) {
   const st = STATUS_STYLE[slot.status];
   const isReservado = slot.status === 'reservado';
+  const isPasado = slot.status === 'pasado';
+  const isDisabled = isReservado || isPasado;
 
   const style = {
     display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8,
     width: '100%', textAlign: 'left', padding: '13px 16px', fontSize: 13.5, fontFamily: 'inherit',
     borderRadius: 14, border: `1px solid ${st.border}`, background: st.bg, color: st.color, fontWeight: 500,
-    cursor: isReservado ? 'not-allowed' : 'pointer',
-    opacity: isReservado ? 0.7 : 1,
+    cursor: isDisabled ? 'not-allowed' : 'pointer',
+    opacity: isDisabled ? 0.7 : 1,
     animation: slot.status === 'enreserva' ? 'emussPulse 2.2s ease-in-out infinite' : 'none',
     transition: 'transform 0.15s ease',
   };
 
   const button = (
-    <button onClick={slot.onClick} style={style}>
+    <button onClick={slot.onClick} disabled={isDisabled} style={style}>
       <span style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
         <span>{st.icon}</span>{slot.time}
       </span>
@@ -23,6 +25,7 @@ export default function SlotButton({ slot }) {
     </button>
   );
 
+  if (isPasado) return button;
   if (!isReservado) return button;
 
   return (

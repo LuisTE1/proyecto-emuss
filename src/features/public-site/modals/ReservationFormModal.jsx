@@ -1,12 +1,15 @@
 import Modal from '../../../components/ui/Modal';
+import { PAYMENT_METHODS } from '../publicSiteSelectors';
 
 const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 12, border: '1.5px solid #e2e8f0', fontSize: 14 };
 const labelStyle = { fontSize: 12.5, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 6 };
 
 export default function ReservationFormModal({
-  sedeName, slotTime, countdownLabel, tarifaVecino, tarifaRegular, totalPrecio,
-  form, personaOptions, onChangeField, onCancel, onSubmit,
+  sedeName, slotTime, countdownLabel, totalPrecio, isPrefilled,
+  form, personaOptions, formError, onChangeField, onChangeAcompanante, onCancel, onSubmit,
 }) {
+  const documentoMaxLength = form.tipoDocumento === 'DNI' ? 8 : 15;
+
   return (
     <Modal maxWidth={460} scroll>
       <div style={{ background: '#f0f9ff', border: '1px solid #e0f2fe', borderRadius: 16, padding: '14px 18px', marginBottom: 20 }}>
@@ -16,10 +19,19 @@ export default function ReservationFormModal({
         </div>
       </div>
       <div style={{ fontWeight: 800, fontSize: 19, color: '#0f172a', marginBottom: 4, letterSpacing: '-0.01em' }}>{sedeName}</div>
-      <div style={{ fontSize: 14, color: '#64748b', marginBottom: 4 }}>Horario: <strong>{slotTime}</strong> · Tiempo: <strong>1 hora</strong></div>
-      <div style={{ fontSize: 13, color: '#94a3b8', marginBottom: 18 }}>
-        Vecino Surco: <strong style={{ color: '#334155' }}>{tarifaVecino}</strong> · Público general: <strong style={{ color: '#334155' }}>{tarifaRegular}</strong>
-      </div>
+      <div style={{ fontSize: 14, color: '#64748b', marginBottom: 18 }}>Horario: <strong>{slotTime}</strong> · Tiempo: <strong>1 hora</strong></div>
+
+      {formError && (
+        <div style={{ background: '#fff1f2', border: '1px solid #fecdd3', color: '#e11d48', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, fontWeight: 600, marginBottom: 16 }}>
+          {formError}
+        </div>
+      )}
+
+      {isPrefilled && !formError && (
+        <div style={{ background: '#eef2ff', border: '1px solid #c7d2fe', color: '#3730a3', borderRadius: 10, padding: '10px 14px', fontSize: 12.5, fontWeight: 600, marginBottom: 16 }}>
+          Usamos los datos de tu cuenta. Puedes editarlos si algo no está actualizado.
+        </div>
+      )}
 
       <div style={{ display: 'grid', gap: 14, marginBottom: 20 }}>
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit,minmax(140px,1fr))', gap: 14 }}>
@@ -35,10 +47,9 @@ export default function ReservationFormModal({
             </select>
           </div>
           <div>
-            <label style={labelStyle}>Tarifa</label>
-            <select value={form.tarifa} onChange={(e) => onChangeField('tarifa', e.target.value)} style={{ ...fieldStyle, background: '#ffffff' }}>
-              <option value="vecino">Vecino Surco</option>
-              <option value="regular">Público general</option>
+            <label style={labelStyle}>Método de pago</label>
+            <select value={form.metodoPago} onChange={(e) => onChangeField('metodoPago', e.target.value)} style={{ ...fieldStyle, background: '#ffffff' }}>
+              {PAYMENT_METHODS.map((m) => <option key={m.value} value={m.value}>{m.label}</option>)}
             </select>
           </div>
         </div>
@@ -46,6 +57,23 @@ export default function ReservationFormModal({
           <input type="checkbox" checked={form.exclusivo} onChange={() => onChangeField('exclusivo', !form.exclusivo)} style={{ width: 16, height: 16 }} />
           Quiero el carril solo para mi grupo (exclusivo)
         </label>
+
+        {!form.exclusivo && form.personas > 1 && (
+          <div style={{ background: '#f8fafc', border: '1px solid #f1f5f9', borderRadius: 12, padding: 14, display: 'grid', gap: 10 }}>
+            <label style={{ ...labelStyle, marginBottom: 0 }}>Nombre de cada acompañante</label>
+            {Array.from({ length: form.personas - 1 }).map((_, i) => (
+              <input
+                key={i}
+                type="text"
+                value={form.acompanantes[i] || ''}
+                onChange={(e) => onChangeAcompanante(i, e.target.value)}
+                placeholder={`Acompañante ${i + 1}`}
+                style={fieldStyle}
+              />
+            ))}
+          </div>
+        )}
+
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: '#eef2ff', borderRadius: 12, padding: '12px 16px', fontSize: 13.5, fontWeight: 700, color: '#3730a3' }}>
           <span>Total a pagar</span><span style={{ fontSize: 17 }}>{totalPrecio}</span>
         </div>
@@ -63,7 +91,15 @@ export default function ReservationFormModal({
           </div>
           <div>
             <label style={labelStyle}>Número de documento</label>
-            <input type="text" value={form.documento} onChange={(e) => onChangeField('documento', e.target.value)} placeholder="********" style={fieldStyle} />
+            <input
+              type="text" inputMode={form.tipoDocumento === 'DNI' ? 'numeric' : 'text'} maxLength={documentoMaxLength}
+              value={form.documento}
+              onChange={(e) => {
+                const raw = form.tipoDocumento === 'DNI' ? e.target.value.replace(/\D/g, '') : e.target.value;
+                onChangeField('documento', raw.slice(0, documentoMaxLength));
+              }}
+              placeholder="********" style={fieldStyle}
+            />
           </div>
         </div>
         <div>

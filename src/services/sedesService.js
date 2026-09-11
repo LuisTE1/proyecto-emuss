@@ -27,10 +27,18 @@ export const STATUS_STYLE = {
   quedan: { bg: 'rgba(236,253,245,0.6)', border: '#a7f3d0', color: '#047857', icon: '✅' },
   reservado: { bg: '#fdf2f4', border: '#fbcfe0', color: '#9d5570', icon: '⛔' },
   enreserva: { bg: '#fffbeb', border: '#fde68a', color: '#92400e', icon: '⏳' },
+  pasado: { bg: '#f8fafc', border: '#e2e8f0', color: '#94a3b8', icon: '🚫' },
 };
 
 export function findSedeById(sedeId) {
   return SEDES.find((s) => s.id === sedeId);
+}
+
+// Enlace universal de Google Maps con direcciones: en móvil abre la app de
+// Maps instalada (o Apple Maps si no hay Google Maps) y en escritorio abre
+// la web con la ruta ya trazada hacia la sede — no solo un mapa estático.
+export function directionsUrlFor(place) {
+  return `https://www.google.com/maps/dir/?api=1&destination=${encodeURIComponent(place.mapQ)}`;
 }
 
 export function blocksForDow(dow) {

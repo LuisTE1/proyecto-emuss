@@ -1,5 +1,5 @@
-import { pad2, selectedDateLabel } from '../../utils/dateUtils';
-import { OMAPED, SEDES, effectiveSlotState, findSedeById, getSlotTimesForDay } from '../../services/sedesService';
+import { isPastSlot, pad2, realTodayDay, selectedDateLabel } from '../../utils/dateUtils';
+import { OMAPED, SEDES, directionsUrlFor, effectiveSlotState, findSedeById, getSlotTimesForDay } from '../../services/sedesService';
 import { priceFor } from '../../services/reservationsService';
 
 const LANE_CAPACITY = 3;
@@ -18,12 +18,14 @@ export function buildFilters(filterDefs, activeFilter, actions) {
 }
 
 export function buildCalendar(selectedDay, calendarOpen, actions) {
+  const todayDay = realTodayDay();
   const days = [];
   for (let i = 0; i < CALENDAR_FIRST_DOW; i++) {
     days.push({ num: CALENDAR_PREV_MONTH_DAYS - CALENDAR_FIRST_DOW + 1 + i, selectable: false });
   }
   for (let d = 1; d <= CALENDAR_DAYS_IN_MONTH; d++) {
-    days.push({ num: d, selectable: true, selected: d === selectedDay, onClick: () => actions.selectDay(d) });
+    const selectable = todayDay == null || d >= todayDay;
+    days.push({ num: d, selectable, selected: d === selectedDay, onClick: selectable ? () => actions.selectDay(d) : undefined });
   }
   const remaining = CALENDAR_CELLS - days.length;
   for (let n = 1; n <= remaining; n++) days.push({ num: n, selectable: false });
@@ -43,26 +45,30 @@ export function buildFilteredSedes(state, actions) {
     id: sede.id,
     name: sede.name,
     address: sede.address,
+    directionsUrl: directionsUrlFor(sede),
     recommendation: recommendation && recommendation.fromSede === sede.name ? {
       text: `Este horario está lleno en ${recommendation.fromSede}. ${recommendation.sedeName} tiene ${recommendation.cuposLibres} lugar(es) libre(s) a las ${recommendation.time.split(' - ')[0]}, a ${recommendation.distanceMin} min de aquí.`,
       ctaLabel: `Ver y reservar en ${recommendation.sedeName}`,
       onClick: () => actions.goToAlternative(recommendation.sedeId, recommendation.time, recommendation.day),
     } : null,
     slots: getSlotTimesForDay(sede, selectedDay).map((time) => {
+      const past = isPastSlot(selectedDay, time);
       const eff = effectiveSlotState(sede, selectedDay, time, slotOccupancy, holds);
-      const status = eff.status;
-      const label = status === 'disponible'
-        ? 'Disponible'
-        : status === 'reservado'
-          ? 'Reservado'
-          : status === 'quedan'
-            ? `${eff.cuposLibres} de ${LANE_CAPACITY} lugares libres`
-            : 'Reservando...';
+      const status = past ? 'pasado' : eff.status;
+      const label = status === 'pasado'
+        ? 'Horario pasado'
+        : status === 'disponible'
+          ? 'Disponible'
+          : status === 'reservado'
+            ? 'Reservado'
+            : status === 'quedan'
+              ? `${eff.cuposLibres} de ${LANE_CAPACITY} lugares libres`
+              : 'Reservando...';
       return {
         time,
         label,
         status,
-        onClick: () => actions.handleSlotClick(sede, time, selectedDay, status, eff.cuposLibres),
+        onClick: status === 'pasado' ? undefined : () => actions.handleSlotClick(sede, time, selectedDay, status, eff.cuposLibres),
         onNotify: () => actions.openNotify(sede.id, sede.name, time, selectedDay),
       };
     }),
@@ -74,10 +80,12 @@ export function buildMapSedes() {
     name: sede.name,
     address: sede.address,
     mapSrc: `https://www.google.com/maps?q=${encodeURIComponent(sede.mapQ)}&output=embed`,
+    directionsUrl: directionsUrlFor(sede),
   })).concat([{
     name: OMAPED.name,
     address: OMAPED.address,
     mapSrc: `https://www.google.com/maps?q=${encodeURIComponent(OMAPED.mapQ)}&output=embed`,
+    directionsUrl: directionsUrlFor(OMAPED),
   }]);
 }
 
@@ -91,6 +99,35 @@ export function buildPersonaOptions(activeCupos) {
   const options = [];
   for (let i = 1; i <= activeCupos; i++) options.push(i);
   return options;
+}
+
+export const PAYMENT_METHODS = [
+  { value: 'tarjeta', label: 'Tarjeta' },
+  { value: 'efectivo', label: 'Efectivo' },
+  { value: 'transferencia', label: 'Transferencia' },
+];
+
+export function paymentMethodLabel(value) {
+  return PAYMENT_METHODS.find((m) => m.value === value)?.label || value;
+}
+
+// Valida el formulario de reserva antes de dejar pasar al carrito: nombre,
+// documento (DNI a 8 dígitos exactos), teléfono (9 dígitos) y correo son
+// obligatorios, y si viene con acompañantes cada uno necesita su nombre —
+// de lo contrario la reserva queda con gente sin identificar.
+export function validateReservationForm(form) {
+  if (!form.nombres.trim() || !form.apellidoPaterno.trim()) return 'Ingresa tus nombres y apellido paterno.';
+  if (!form.documento.trim()) return 'Ingresa tu número de documento.';
+  if (form.tipoDocumento === 'DNI' && !/^\d{8}$/.test(form.documento.trim())) return 'El DNI debe tener 8 dígitos.';
+  if (!/^\d{9}$/.test(form.telefono.trim())) return 'Ingresa un teléfono válido de 9 dígitos.';
+  if (!/^\S+@\S+\.\S+$/.test(form.correo.trim())) return 'Ingresa un correo electrónico válido.';
+  if (!form.exclusivo && form.personas > 1) {
+    const faltante = (form.acompanantes || []).slice(0, form.personas - 1).some((a) => !a || !a.trim());
+    if (faltante || (form.acompanantes || []).length < form.personas - 1) {
+      return 'Ingresa el nombre de cada acompañante que va contigo.';
+    }
+  }
+  return null;
 }
 
 // Resume las necesidades de accesibilidad marcadas en el formulario, para

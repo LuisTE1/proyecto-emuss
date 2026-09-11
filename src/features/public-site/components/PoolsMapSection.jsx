@@ -10,10 +10,18 @@ export default function PoolsMapSection({ mapSedes }) {
           {mapSedes.map((m) => (
             <div key={m.name}>
               <div style={{ fontWeight: 800, fontSize: 17, marginBottom: 4, color: '#0f172a' }}>{m.name}</div>
-              <div style={{ fontSize: 14, color: '#64748b', marginBottom: 16 }}>{m.address}</div>
-              <div style={{ aspectRatio: '1/1', borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 24px rgba(15,23,42,0.06)', border: '1px solid #f1f5f9' }}>
+              <div style={{ fontSize: 14, color: '#64748b', marginBottom: 12 }}>{m.address}</div>
+              <div style={{ aspectRatio: '1/1', borderRadius: 20, overflow: 'hidden', boxShadow: '0 4px 24px rgba(15,23,42,0.06)', border: '1px solid #f1f5f9', marginBottom: 12 }}>
                 <iframe title={m.name} src={m.mapSrc} width="100%" height="100%" style={{ border: 0, display: 'block' }} loading="lazy" />
               </div>
+              <a
+                href={m.directionsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{ display: 'inline-flex', alignItems: 'center', gap: 6, fontSize: 13, fontWeight: 700, color: '#4f46e5', textDecoration: 'none' }}
+              >
+                📍 Cómo llegar (abre Maps)
+              </a>
             </div>
           ))}
         </div>

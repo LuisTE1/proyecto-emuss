@@ -6,7 +6,7 @@ import AccountReservationsList from './components/AccountReservationsList';
 import RecommendationsPanel from './components/RecommendationsPanel';
 import NotificationPreferences from './components/NotificationPreferences';
 import NotificationsFeed from './components/NotificationsFeed';
-import { buildAccountKpis, buildAccountRecommendation, buildAccountReservations, buildActivityWeeks } from './clientAccountSelectors';
+import { buildAccountKpis, buildAccountNotifications, buildAccountRecommendation, buildAccountReservations, buildActivityWeeks } from './clientAccountSelectors';
 
 export default function ClientAccountPage({ session, reservations, actions, onLogout, onGoToDisponibilidad }) {
   const [tab, setTab] = useState('resumen');
@@ -15,6 +15,7 @@ export default function ClientAccountPage({ session, reservations, actions, onLo
   const weeks = buildActivityWeeks(reservations, session);
   const accountReservations = buildAccountReservations(reservations, session, actions);
   const recommendation = buildAccountRecommendation(reservations, session);
+  const notifications = buildAccountNotifications(reservations, session);
 
   return (
     <div className="emuss-pad" style={{ maxWidth: 1320, margin: '0 auto', padding: '48px 32px 96px' }}>
@@ -39,7 +40,7 @@ export default function ClientAccountPage({ session, reservations, actions, onLo
         </div>
       </div>
 
-      <AccountTabs activeTab={tab} onChange={setTab} unreadCount={2} />
+      <AccountTabs activeTab={tab} onChange={setTab} />
 
       {tab === 'resumen' && (
         <>
@@ -54,7 +55,7 @@ export default function ClientAccountPage({ session, reservations, actions, onLo
       {tab === 'notificaciones' && (
         <>
           <NotificationPreferences />
-          <NotificationsFeed />
+          <NotificationsFeed items={notifications} />
         </>
       )}
 

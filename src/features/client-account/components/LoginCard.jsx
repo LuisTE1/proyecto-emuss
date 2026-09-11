@@ -57,7 +57,11 @@ export default function LoginCard({ mode, form, error, loading, onChangeMode, on
           {isRegister && (
             <div>
               <label style={labelStyle}>DNI</label>
-              <input type="text" value={form.dni} onChange={(e) => onChangeField('dni', e.target.value)} placeholder="********" style={fieldStyle} />
+              <input
+                type="text" inputMode="numeric" maxLength={8} value={form.dni}
+                onChange={(e) => onChangeField('dni', e.target.value.replace(/\D/g, '').slice(0, 8))}
+                placeholder="********" style={fieldStyle}
+              />
             </div>
           )}
         </div>

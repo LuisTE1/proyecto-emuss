@@ -1,0 +1,82 @@
+import { buildAccessibilityLabel, buildCountdownLabel, buildModalPricing, buildPersonaOptions } from '../publicSiteSelectors';
+import QueueModal from './QueueModal';
+import NotifyModal from './NotifyModal';
+import ReservationFormModal from './ReservationFormModal';
+import CartModal from './CartModal';
+import TicketModal from './TicketModal';
+import { dayLabel } from '../../../utils/dateUtils';
+
+export default function PublicSiteModals({ state, actions }) {
+  const { modal, notifyModal } = state;
+  const pricing = buildModalPricing(state);
+
+  return (
+    <>
+      {modal && (modal.type === 'queue-info' || modal.type === 'queue-success') && (
+        <QueueModal
+          step={modal.type === 'queue-info' ? 'info' : 'success'}
+          sedeName={pricing.modalSedeName}
+          slotTime={pricing.modalSlotTime}
+          onClose={actions.closeModal}
+          onJoinQueue={actions.joinQueue}
+        />
+      )}
+
+      {modal && modal.type === 'form' && (
+        <ReservationFormModal
+          sedeName={pricing.modalSedeName}
+          slotTime={pricing.modalSlotTime}
+          countdownLabel={buildCountdownLabel(state.countdown)}
+          tarifaVecino={pricing.tarifaVecino}
+          tarifaRegular={pricing.tarifaRegular}
+          totalPrecio={pricing.totalPrecio}
+          form={state.form}
+          personaOptions={buildPersonaOptions(state.activeCupos)}
+          onChangeField={actions.setFormField}
+          onCancel={actions.closeModal}
+          onSubmit={actions.goToCart}
+          onExtendTime={actions.extendCountdown}
+        />
+      )}
+
+      {modal && modal.type === 'cart' && (
+        <CartModal
+          sedeName={pricing.modalSedeName}
+          slotTime={pricing.modalSlotTime}
+          personas={state.form.personas}
+          rateLabel={pricing.rateLabel}
+          ratePrice={pricing.ratePrice}
+          totalPrecio={pricing.totalPrecio}
+          countdownLabel={buildCountdownLabel(state.countdown)}
+          accesibilidadLabel={buildAccessibilityLabel(state.form)}
+          onBack={actions.backToForm}
+          onConfirm={actions.confirmReserva}
+          onExtendTime={actions.extendCountdown}
+        />
+      )}
+
+      {modal && modal.type === 'ticket' && (
+        <TicketModal
+          ticket={state.lastTicket || {}}
+          sedeName={pricing.modalSedeName}
+          dateLabel={modal.day ? dayLabel(modal.day) : ''}
+          slotTime={pricing.modalSlotTime}
+          onClose={actions.closeModal}
+          onCancelReserva={actions.cancelReserva}
+        />
+      )}
+
+      {notifyModal && (
+        <NotifyModal
+          confirmed={state.notifyConfirmed}
+          sedeName={notifyModal.sedeName}
+          slotTime={notifyModal.time}
+          contact={state.notifyForm.contact}
+          onChangeContact={actions.setNotifyContact}
+          onClose={actions.closeNotify}
+          onSubmit={actions.submitNotify}
+        />
+      )}
+    </>
+  );
+}

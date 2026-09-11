@@ -1,0 +1,51 @@
+body {
+  margin: 0;
+  background: #f8fafc;
+  color: #0f172a;
+  font-family: -apple-system, "Inter", "Segoe UI", sans-serif;
+  overflow-x: hidden;
+}
+* {
+  box-sizing: border-box;
+}
+@media (max-width: 860px) {
+  .emuss-2col {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+  .emuss-pad {
+    padding-left: 20px !important;
+    padding-right: 20px !important;
+  }
+  .emuss-navlinks {
+    display: none !important;
+  }
+  .emuss-table-wrap {
+    overflow-x: auto !important;
+  }
+}
+a {
+  color: #4f46e5;
+  text-decoration: none;
+}
+a:hover {
+  color: #6366f1;
+}
+.emuss-scroll {
+  scroll-behavior: smooth;
+}
+@keyframes emussPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+button {
+  font-family: inherit;
+}
+input:focus, select:focus {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(79, 70, 229, 0.18);
+  border-color: #4f46e5 !important;
+}
+table {
+  border-collapse: collapse;
+  width: 100%;
+}

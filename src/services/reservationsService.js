@@ -57,6 +57,8 @@ export function mapReservationRow(row) {
     acompanantes: row.acompanantes || [],
     contactoEmergencia: row.contacto_emergencia || '',
     createdAt: row.created_at,
+    verifyToken: row.verify_token,
+    checkedInAt: row.checked_in_at,
   };
 }
 
@@ -121,6 +123,37 @@ export async function cancelReservationByCode(code) {
 // Cancelación pública (desde el enlace del correo, con o sin sesión): la
 // base de datos exige que el DNI o correo coincidan con los de esa reserva
 // puntual — el código solo no basta, es secuencial y adivinable.
+// Verificación pública por QR (sin sesión): usa el token opaco del ticket,
+// no el código secuencial, para que no se puedan enumerar reservas ajenas
+// probando códigos. Devuelve solo lo mínimo (nombre/sede/horario/estado),
+// nunca DNI/teléfono/correo — ver migración verification_token_not_sequential_code.
+export async function verifyReservationPublic(token) {
+  const { data, error } = await supabase.rpc('verify_reservation_public', { p_token: token });
+  if (error) throw error;
+  const row = Array.isArray(data) ? data[0] : data;
+  return {
+    found: Boolean(row?.found),
+    estado: row?.estado ?? null,
+    nombre: row?.nombre ?? null,
+    sedeName: row?.sede_name ?? null,
+    fecha: row?.fecha ?? null,
+    time: row?.time ?? null,
+    checkedIn: Boolean(row?.checked_in),
+  };
+}
+
+// Marca el check-in en la puerta — protegido por la misma RLS que ya
+// restringe reservations a admins de la sede correspondiente (o Super
+// Admin). `identifier` puede ser el código (entrada manual) o el token del
+// QR escaneado; ambos son columnas únicas de la misma tabla.
+export async function markCheckedIn({ code, verifyToken }) {
+  let query = supabase.from('reservations').update({ checked_in_at: new Date().toISOString() });
+  query = code ? query.eq('code', code) : query.eq('verify_token', verifyToken);
+  const { data, error } = await query.select().single();
+  if (error) throw error;
+  return mapReservationRow(data);
+}
+
 export async function cancelReservationPublic(code, dniOrCorreo) {
   const { data, error } = await supabase.rpc('cancel_reservation_public', {
     p_code: code,

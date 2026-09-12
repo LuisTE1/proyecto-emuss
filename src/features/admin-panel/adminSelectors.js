@@ -152,6 +152,36 @@ export function buildMaintenanceRows(maintenance, actions) {
   });
 }
 
+// Lista de clientes — 100% derivada de las reservas ya cargadas (no hay
+// tabla de "clientes" propia): agrupa por DNI+correo y cuenta
+// reservas/asistencias/cancelaciones/no-shows/última reserva.
+export function buildClientesRows(reservations, search) {
+  const groups = new Map();
+  reservations.forEach((r) => {
+    const key = `${r.dni}|${r.correo}`;
+    if (!groups.has(key)) {
+      groups.set(key, { nombre: r.nombre, dni: r.dni, correo: r.correo, reservas: 0, asistencias: 0, cancelaciones: 0, noShows: 0, ultima: null });
+    }
+    const g = groups.get(key);
+    g.reservas += 1;
+    if (r.estado === 'cancelada') g.cancelaciones += 1;
+    else if (r.checkedInAt) g.asistencias += 1;
+    else if (r.fecha < todayForClientes()) g.noShows += 1;
+    if (!g.ultima || r.fecha > g.ultima) g.ultima = r.fecha;
+  });
+
+  const q = (search || '').toLowerCase();
+  return Array.from(groups.values())
+    .filter((c) => !q || c.nombre.toLowerCase().includes(q) || (c.correo || '').toLowerCase().includes(q) || (c.dni || '').includes(q))
+    .sort((a, b) => (b.ultima || '').localeCompare(a.ultima || ''))
+    .map((c) => ({ ...c, ultimaLabel: c.ultima ? dayLabel(c.ultima) : '—' }));
+}
+
+function todayForClientes() {
+  const d = new Date();
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
 export function buildSedeSelectOptions() {
   return SEDES.map((s) => ({ id: s.id, name: s.name }));
 }

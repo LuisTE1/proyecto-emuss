@@ -156,13 +156,17 @@ export function validateReservationForm(form) {
 
 // Resume las necesidades de accesibilidad marcadas en el formulario, para
 // mostrarlas en el resumen del carrito y confirmar que quedaron registradas.
-export function buildAccessibilityLabel(form) {
+export function buildAccessibilityItems(form) {
   const items = [];
   if (form.necesitaElevador) items.push('Elevador hidráulico');
   if (form.necesitaRampa) items.push('Rampa / silla de ruedas');
   if (form.necesitaAsistencia) items.push('Apoyo auditivo o visual');
   if (form.vaConCuidador) items.push('Con cuidador/asistente');
-  return items.join(', ');
+  return items;
+}
+
+export function buildAccessibilityLabel(form) {
+  return buildAccessibilityItems(form).join(', ');
 }
 
 // Datos derivados del modal activo (formulario / carrito / ticket): sede,

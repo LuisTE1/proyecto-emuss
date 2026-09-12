@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import Modal from '../../../components/ui/Modal';
 import { paymentMethodLabel } from '../publicSiteSelectors';
 import { whatsappUrl } from '../../../services/notificationsService';
+import { downloadTicketPdf } from '../../../services/ticketPdfService';
 
 function Row({ label, value }) {
   return (
@@ -23,6 +25,19 @@ function accessibilityItems(ticket) {
 export default function TicketModal({ ticket, sedeName, dateLabel, slotTime, onClose, onCancelReserva }) {
   const accessibility = accessibilityItems(ticket);
   const isCancelled = ticket.estado === 'cancelada';
+  const [downloading, setDownloading] = useState(false);
+
+  const handleDownloadPdf = async () => {
+    setDownloading(true);
+    try {
+      await downloadTicketPdf(ticket, sedeName, dateLabel, slotTime);
+    } catch {
+      // best-effort: si falla la generación, el usuario igual tiene el
+      // correo con los mismos datos.
+    } finally {
+      setDownloading(false);
+    }
+  };
 
   return (
     <Modal maxWidth={440} scroll textAlign="center">
@@ -57,12 +72,24 @@ export default function TicketModal({ ticket, sedeName, dateLabel, slotTime, onC
           </div>
         </div>
       </div>
-      {accessibility.length > 0 && (
+      {(accessibility.length > 0 || ticket.notasAccesibilidad) && (
         <div style={{ background: '#f0fdf4', border: '1px solid #bbf7d0', borderRadius: 12, padding: '12px 16px', fontSize: 12.5, color: '#166534', fontWeight: 600, textAlign: 'left', marginBottom: 20 }}>
-          ♿ El personal de la sede ya sabe que necesitas: {accessibility.join(', ')}.
+          {accessibility.length > 0 && <div>♿ El personal de la sede ya sabe que necesitas: {accessibility.join(', ')}.</div>}
+          {ticket.notasAccesibilidad && (
+            <div style={{ marginTop: accessibility.length > 0 ? 8 : 0, fontWeight: 500 }}>
+              <strong style={{ fontWeight: 700 }}>Nota:</strong> {ticket.notasAccesibilidad}
+            </div>
+          )}
         </div>
       )}
       <button onClick={onClose} style={{ width: '100%', padding: 14, borderRadius: 12, border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, fontSize: 15, cursor: 'pointer', boxShadow: '0 8px 20px rgba(79,70,229,0.28)', marginBottom: 10 }}>Listo</button>
+      <button
+        onClick={handleDownloadPdf}
+        disabled={downloading}
+        style={{ width: '100%', padding: 13, borderRadius: 12, border: '1.5px solid #c7d2fe', background: '#eef2ff', color: '#3730a3', fontWeight: 700, fontSize: 14, cursor: downloading ? 'default' : 'pointer', marginBottom: 10 }}
+      >
+        {downloading ? 'Generando PDF…' : '⬇️ Descargar PDF con QR de acceso'}
+      </button>
       {!isCancelled && (
         <button onClick={onCancelReserva} style={{ width: '100%', padding: 13, borderRadius: 12, border: '1.5px solid #fecdd3', background: '#fff1f2', color: '#e11d48', fontWeight: 700, fontSize: 14, cursor: 'pointer', marginBottom: 10 }}>❌ ¿Deseas cancelar tu reserva?</button>
       )}

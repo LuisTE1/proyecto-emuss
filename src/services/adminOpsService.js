@@ -33,9 +33,19 @@ export async function setPanicState(active) {
   if (error) throw error;
 }
 
-// Se sigue guardando como registro histórico en la base (útil para
-// auditoría futura), aunque el panel admin ya no muestra un feed en vivo.
 export async function pushActivityLog(text) {
   const { error } = await supabase.from('activity_logs').insert({ text });
   if (error) throw error;
+}
+
+// Primer lector de activity_logs desde el panel — antes solo se escribía
+// (ver pushActivityLog). Alimenta la pestaña Auditoría.
+export async function fetchActivityLog(limit = 200) {
+  const { data, error } = await supabase
+    .from('activity_logs')
+    .select('id, text, created_at')
+    .order('created_at', { ascending: false })
+    .limit(limit);
+  if (error) throw error;
+  return data || [];
 }

@@ -9,7 +9,7 @@ function Row({ label, value, strong }) {
   );
 }
 
-export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadLabel, metodoPagoLabel, acompanantesLabel, contactoEmergencia, confirming, onBack, onConfirm }) {
+export default function CartModal({ sedeName, slotTime, personas, rateLabel, ratePrice, totalPrecio, countdownLabel, accesibilidadItems, notasAccesibilidad, metodoPagoLabel, acompanantesLabel, contactoEmergencia, confirming, onBack, onConfirm }) {
   return (
     <Modal maxWidth={440} scroll>
       <div style={{ background: '#f0f9ff', border: '1px solid #e0f2fe', borderRadius: 16, padding: '14px 18px', marginBottom: 20 }}>
@@ -26,7 +26,24 @@ export default function CartModal({ sedeName, slotTime, personas, rateLabel, rat
         {acompanantesLabel && <Row label="Acompañantes" value={acompanantesLabel} />}
         <Row label="Tarifa" value={`${rateLabel} (${ratePrice})`} />
         <Row label="Método de pago" value={metodoPagoLabel} />
-        {accesibilidadLabel && <Row label="Accesibilidad" value={accesibilidadLabel} />}
+        {accesibilidadItems && accesibilidadItems.length > 0 && (
+          <div>
+            <span style={{ color: '#94a3b8', display: 'block', marginBottom: 6 }}>Accesibilidad</span>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {accesibilidadItems.map((item) => (
+                <span key={item} style={{ padding: '4px 10px', borderRadius: 999, fontWeight: 700, fontSize: 12.5, background: '#eef2ff', color: '#3730a3' }}>
+                  {item}
+                </span>
+              ))}
+            </div>
+          </div>
+        )}
+        {notasAccesibilidad && (
+          <div>
+            <span style={{ color: '#94a3b8', display: 'block', marginBottom: 4 }}>Cuéntanos más</span>
+            <span style={{ fontWeight: 600 }}>{notasAccesibilidad}</span>
+          </div>
+        )}
         <Row label="Contacto de emergencia" value={contactoEmergencia} />
         <div style={{ borderTop: '1px dashed #cbd5e1', marginTop: 4, paddingTop: 10 }}>
           <Row label="Total" value={totalPrecio} strong={{ color: '#4f46e5', fontSize: 16 }} />

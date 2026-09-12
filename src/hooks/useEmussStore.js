@@ -16,9 +16,11 @@ import {
   exportReservationsCSV,
   filterReservationsBySearch,
   fetchReservations,
+  markCheckedIn,
   priceFor,
+  verifyReservationPublic,
 } from '../services/reservationsService';
-import { createHold, fetchActiveHolds, releaseHold, updateHold } from '../services/holdsService';
+import { createHold, fetchActiveHolds, releaseHold, releaseHoldBeacon, updateHold } from '../services/holdsService';
 import { fetchSlotOccupancy } from '../services/slotOccupancyService';
 import { addClosure, fetchClosures, removeClosure } from '../services/closuresService';
 import { subscribeToAvailabilityRealtime, unsubscribeRealtime } from '../services/realtimeService';
@@ -30,6 +32,7 @@ import {
   updateAdminSede,
 } from '../services/rbacService';
 import {
+  fetchActivityLog,
   fetchMaintenanceStatus,
   fetchPanicState,
   pushActivityLog,
@@ -62,6 +65,10 @@ const EMPTY_RESERVATION_FORM = {
   necesitaAsistencia: false,
   vaConCuidador: false,
   notasAccesibilidad: '',
+  // Preparado para Cloudflare Turnstile (ver TurnstileWidget) — hoy no se
+  // envía a ningún lado, solo queda listo para cuando haya Site/Secret Key
+  // reales y se conecte la verificación del lado del servidor.
+  turnstileToken: '',
 };
 
 // Divide el nombre completo de la cuenta en nombres / apellido paterno /
@@ -122,6 +129,8 @@ const INITIAL_STATE = {
   closures: [],
   modal: null,
   countdown: 0,
+  queueWaitingCount: 0,
+  queueCountdown: 0,
   form: { ...EMPTY_RESERVATION_FORM },
   formError: '',
   confirming: false,
@@ -130,7 +139,7 @@ const INITIAL_STATE = {
   activeCupos: 3,
   panicActive: false,
   maintenance: {},
-  adminTab: 'analytics',
+  adminTab: 'resumen',
   adminRange: 'semana',
   adminSedeFilter: 'todas',
   tableSearch: '',
@@ -138,11 +147,16 @@ const INITIAL_STATE = {
   adminForm: { sedeId: 'chacarilla', time: '', personas: 1, exclusivo: false, tarifa: 'vecino', nombre: '', documento: '', telefono: '' },
   rbacUsers: [],
   rbacModal: null,
+  auditLog: [],
   rbacForm: { nombre: '', correo: '', rol: 'Encargado de sede', sedeId: 'chacarilla' },
   notifyModal: null,
   notifyForm: { contact: '' },
   notifyConfirmed: false,
   publicCancelModal: null,
+  publicVerifyModal: null,
+  checkinCode: '',
+  checkinResult: null,
+  checkinStatus: 'idle',
   session: null,
   authMode: 'login',
   authForm: { ...EMPTY_AUTH_FORM },
@@ -194,13 +208,44 @@ export function useEmussStore() {
   }, []);
   useEffect(() => () => clearCountdownTimer(), [clearCountdownTimer]);
 
+  // Countdown independiente para la Cola Virtual (tiempo real hasta que
+  // vence el hold que más pronto expira para ese horario) — mismo patrón
+  // que countdownTimer, pero separado porque corre mientras se mira el
+  // modal de cola, no mientras se llena el formulario.
+  const queueCountdownTimer = useRef(null);
+  const clearQueueCountdownTimer = useCallback(() => {
+    if (queueCountdownTimer.current) {
+      clearInterval(queueCountdownTimer.current);
+      queueCountdownTimer.current = null;
+    }
+  }, []);
+  useEffect(() => () => clearQueueCountdownTimer(), [clearQueueCountdownTimer]);
+
+  // Si se cierra la pestaña (o se navega fuera) con el formulario o el
+  // carrito abiertos, el hold quedaría bloqueado hasta que venza por sí
+  // solo (hasta 8 min) — con esto se libera casi al instante en vez de
+  // dejar el cupo bloqueado para los demás sin necesidad.
+  const activeHoldRef = useRef(null);
+  useEffect(() => {
+    activeHoldRef.current = (state.modal?.type === 'form' || state.modal?.type === 'cart') ? state.modal.holdId : null;
+  }, [state.modal]);
+  useEffect(() => {
+    const releaseOnLeave = () => releaseHoldBeacon(activeHoldRef.current);
+    window.addEventListener('pagehide', releaseOnLeave);
+    window.addEventListener('beforeunload', releaseOnLeave);
+    return () => {
+      window.removeEventListener('pagehide', releaseOnLeave);
+      window.removeEventListener('beforeunload', releaseOnLeave);
+    };
+  }, []);
+
   // ---- datos del panel admin (RBAC, mantenimiento, pánico, actividad) ----
   const loadAdminData = useCallback(async () => {
     try {
-      const [rbacUsers, maintenance, panicActive] = await Promise.all([
-        fetchAdminUsers(), fetchMaintenanceStatus(), fetchPanicState(),
+      const [rbacUsers, maintenance, panicActive, auditLog] = await Promise.all([
+        fetchAdminUsers(), fetchMaintenanceStatus(), fetchPanicState(), fetchActivityLog(),
       ]);
-      patchState({ rbacUsers, maintenance, panicActive });
+      patchState({ rbacUsers, maintenance, panicActive, auditLog });
     } catch {
       patchState({ globalError: 'No se pudieron cargar los datos del panel admin.' });
     }
@@ -273,6 +318,23 @@ export function useEmussStore() {
     }
   }, [patchState]);
 
+  // Enlace de verificación por QR (`?verificar=TOKEN`, sin sesión): lo abre
+  // el celular del encargado de la puerta al escanear el ticket. Muestra
+  // solo válido/no válido + datos mínimos, nunca DNI/teléfono/correo.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('verificar');
+    if (token) {
+      patchState({ publicVerifyModal: { status: 'loading', data: null } });
+      params.delete('verificar');
+      const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+      window.history.replaceState({}, '', next);
+      verifyReservationPublic(token)
+        .then((data) => patchState({ publicVerifyModal: { status: 'done', data } }))
+        .catch(() => patchState({ publicVerifyModal: { status: 'done', data: { found: false } } }));
+    }
+  }, [patchState]);
+
   // ---- navegación / vista ----
   // El acceso al panel admin ya no es un botón público: entra por el mismo
   // login, y según el correo (cuenta admin vs. cuenta cliente) se decide a
@@ -313,14 +375,55 @@ export function useEmussStore() {
     });
   }, [patchState]);
 
+  // Muestra datos reales del horario (nada de números inventados): cuántos
+  // holds activos hay ahora mismo para ese sede+fecha+hora (personas a
+  // medio pagar, no una "cola" en sentido estricto) y un countdown real
+  // hasta que vence el que menos tiempo le queda — de ahí sale la
+  // posibilidad de que el cupo se libere.
   const openQueueModal = useCallback((sede, time, fecha) => {
     clearCountdownTimer();
-    patchState({ modal: { type: 'queue-info', sedeId: sede.id, sedeName: sede.name, slotTime: time, fecha } });
-  }, [clearCountdownTimer, patchState]);
+    clearQueueCountdownTimer();
+    const matching = state.holds.filter((h) => h.sedeId === sede.id && h.fecha === fecha && h.time === time);
+    const soonestExpiresAt = matching.reduce((min, h) => {
+      const t = new Date(h.expiresAt).getTime();
+      return min === null || t < min ? t : min;
+    }, null);
+    const initialSeconds = soonestExpiresAt ? Math.max(0, Math.round((soonestExpiresAt - Date.now()) / 1000)) : 0;
+    patchState({
+      modal: { type: 'queue-info', sedeId: sede.id, sedeName: sede.name, slotTime: time, fecha },
+      queueWaitingCount: matching.length,
+      queueCountdown: initialSeconds,
+    });
+    if (initialSeconds > 0) {
+      queueCountdownTimer.current = setInterval(() => {
+        patchState((s) => {
+          if (s.queueCountdown <= 1) {
+            clearQueueCountdownTimer();
+            return { queueCountdown: 0 };
+          }
+          return { queueCountdown: s.queueCountdown - 1 };
+        });
+      }, 1000);
+    }
+  }, [clearCountdownTimer, clearQueueCountdownTimer, patchState, state.holds]);
 
+  // "Unirme a la lista" ya no finge un puesto en una cola ni promete
+  // SMS/push que no existen: abre el mismo modal real de "avisarme si se
+  // libera un cupo" (el que ya usan los horarios llenos), que sí guarda la
+  // solicitud en la base de datos.
   const joinQueue = useCallback(() => {
-    patchState((s) => ({ modal: { ...s.modal, type: 'queue-success' } }));
-  }, [patchState]);
+    clearQueueCountdownTimer();
+    patchState((s) => {
+      const m = s.modal;
+      if (!m) return { modal: null };
+      return {
+        modal: null,
+        notifyModal: { sedeId: m.sedeId, sedeName: m.sedeName, time: m.slotTime, fecha: m.fecha },
+        notifyConfirmed: false,
+        notifyForm: { contact: '' },
+      };
+    });
+  }, [clearQueueCountdownTimer, patchState]);
 
   // Pide el candado del horario en la base de datos ANTES de mostrar el
   // formulario: si alguien más lo ganó en la última fracción de segundo,
@@ -354,6 +457,34 @@ export function useEmussStore() {
       });
     }, 1000);
   }, [clearCountdownTimer, patchState, refreshAvailability]);
+
+  // Enlace directo desde el correo de "se liberó tu cupo"
+  // (`?reservar=sedeId&reservarFecha=YYYY-MM-DD&reservarHora=HH:MM - HH:MM`):
+  // en cuanto la disponibilidad terminó de cargar, abre el formulario ya
+  // listo para ese horario exacto, para que solo falte llenar los datos.
+  const reservarLinkHandled = useRef(false);
+  useEffect(() => {
+    if (reservarLinkHandled.current || state.dataLoading) return;
+    const params = new URLSearchParams(window.location.search);
+    const sedeId = params.get('reservar');
+    if (!sedeId) return;
+    reservarLinkHandled.current = true;
+    const fecha = params.get('reservarFecha');
+    const time = params.get('reservarHora');
+    params.delete('reservar');
+    params.delete('reservarFecha');
+    params.delete('reservarHora');
+    const next = `${window.location.pathname}${params.toString() ? `?${params}` : ''}`;
+    window.history.replaceState({}, '', next);
+    const sede = findSedeById(sedeId);
+    if (!sede || !fecha || !time) return;
+    const eff = effectiveSlotState(sede, fecha, time, state.slotOccupancy, state.holds);
+    if (eff.status === 'reservado') {
+      patchState({ globalError: 'Ese horario ya se volvió a llenar.' });
+      return;
+    }
+    openFormModal(sede, time, fecha, eff.cuposLibres);
+  }, [state.dataLoading, state.slotOccupancy, state.holds, openFormModal, patchState]);
 
   const goToCart = useCallback(() => {
     const error = validateReservationForm(state.form);
@@ -404,6 +535,7 @@ export function useEmussStore() {
           contactoEmergencia: reservation.contactoEmergencia,
           necesitaElevador: reservation.necesitaElevador, necesitaRampa: reservation.necesitaRampa,
           necesitaAsistencia: reservation.necesitaAsistencia, vaConCuidador: reservation.vaConCuidador,
+          notasAccesibilidad: reservation.notasAccesibilidad, verifyToken: reservation.verifyToken,
         },
       }));
       pushActivityLog(`Reserva confirmada — ${sede.name}, carril ${m.slotTime}.`).catch(() => {});
@@ -453,10 +585,11 @@ export function useEmussStore() {
 
   const closeModal = useCallback(() => {
     clearCountdownTimer();
+    clearQueueCountdownTimer();
     const holdId = state.modal?.holdId;
     patchState({ modal: null, recommendation: null });
     if (holdId) releaseHold(holdId).catch(() => {});
-  }, [clearCountdownTimer, patchState, state.modal]);
+  }, [clearCountdownTimer, clearQueueCountdownTimer, patchState, state.modal]);
 
   const viewTicket = useCallback((code) => {
     setState((prev) => {
@@ -472,6 +605,7 @@ export function useEmussStore() {
           contactoEmergencia: r.contactoEmergencia,
           necesitaElevador: r.necesitaElevador, necesitaRampa: r.necesitaRampa,
           necesitaAsistencia: r.necesitaAsistencia, vaConCuidador: r.vaConCuidador,
+          notasAccesibilidad: r.notasAccesibilidad, verifyToken: r.verifyToken,
         },
       };
     });
@@ -544,6 +678,67 @@ export function useEmussStore() {
       patchState((s) => ({ publicCancelModal: { ...s.publicCancelModal, status: 'error', message } }));
     }
   }, [patchState, state.publicCancelModal]);
+
+  const closePublicVerifyModal = useCallback(() => patchState({ publicVerifyModal: null }), [patchState]);
+
+  // ---- check-in (panel admin): busca por código escrito a mano o por el
+  // token que trae el QR escaneado, y confirma el ingreso ----
+  const setCheckinCode = useCallback((value) => patchState({ checkinCode: value }), [patchState]);
+
+  const lookupCheckinByCode = useCallback((rawCode) => {
+    const code = (rawCode || '').trim();
+    if (!code) return;
+    const found = state.reservations.find((r) => r.code.toLowerCase() === code.toLowerCase());
+    if (!found) {
+      patchState({ checkinStatus: 'not_found', checkinResult: null });
+      return;
+    }
+    const sede = findSedeById(found.sedeId);
+    patchState({
+      checkinStatus: 'found',
+      checkinResult: {
+        code: found.code, verifyToken: found.verifyToken, estado: found.estado, nombre: found.nombre,
+        sedeName: sede?.name || found.sedeId, fecha: found.fecha, time: found.time, checkedIn: Boolean(found.checkedInAt),
+      },
+    });
+  }, [patchState, state.reservations]);
+
+  // El QR codifica una URL completa (`.../?verificar=TOKEN`) — se acepta
+  // tanto la URL completa como el token suelto, por si el lector de QR
+  // usado devuelve solo el texto crudo.
+  const lookupCheckinByScan = useCallback(async (scannedText) => {
+    const match = String(scannedText || '').match(/verificar=([0-9a-f-]{36})/i);
+    const token = match ? match[1] : scannedText;
+    if (!token) return;
+    patchState({ checkinStatus: 'loading' });
+    try {
+      const data = await verifyReservationPublic(token);
+      if (!data.found) {
+        patchState({ checkinStatus: 'not_found', checkinResult: null });
+        return;
+      }
+      patchState({ checkinStatus: 'found', checkinResult: { ...data, code: null, verifyToken: token } });
+    } catch {
+      patchState({ checkinStatus: 'not_found', checkinResult: null });
+    }
+  }, [patchState]);
+
+  const confirmCheckin = useCallback(async () => {
+    const r = state.checkinResult;
+    if (!r || r.checkedIn) return;
+    try {
+      const updated = await markCheckedIn(r.code ? { code: r.code } : { verifyToken: r.verifyToken });
+      patchState((s) => ({
+        checkinResult: { ...s.checkinResult, checkedIn: true },
+        reservations: s.reservations.map((res) => (res.code === updated.code ? updated : res)),
+      }));
+      pushActivityLog(`Check-in confirmado — ${updated.nombre}, ${updated.time}.`).catch(() => {});
+    } catch {
+      patchState({ globalError: 'No se pudo confirmar el check-in.' });
+    }
+  }, [patchState, state.checkinResult]);
+
+  const resetCheckin = useCallback(() => patchState({ checkinCode: '', checkinResult: null, checkinStatus: 'idle' }), [patchState]);
 
   // ---- cuenta de cliente / admin (login / registro) ----
   const setAuthMode = useCallback((mode) => patchState({ authMode: mode, authError: '' }), [patchState]);
@@ -837,6 +1032,12 @@ export function useEmussStore() {
       submitNotify,
       closePublicCancelModal,
       submitPublicCancel,
+      closePublicVerifyModal,
+      setCheckinCode,
+      lookupCheckinByCode,
+      lookupCheckinByScan,
+      confirmCheckin,
+      resetCheckin,
       setAuthMode,
       setAuthField,
       submitLogin,

@@ -43,6 +43,26 @@ export async function releaseHold(holdId) {
   if (error) throw error;
 }
 
+// Igual que releaseHold, pero pensado para dispararse en 'pagehide' (cierre
+// de pestaña / navegación fuera de la app a medio formulario): en ese
+// momento un fetch normal puede quedar cortado antes de salir, así que se
+// usa `keepalive` para que el navegador lo complete aunque la página ya se
+// haya descargado — evita que el cupo quede bloqueado hasta que venza el
+// hold (hasta 8 minutos) solo por haber cerrado la pestaña.
+export function releaseHoldBeacon(holdId) {
+  if (!holdId) return;
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const anonKey = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  if (!url || !anonKey) return;
+  try {
+    fetch(`${url}/rest/v1/reservation_holds?id=eq.${encodeURIComponent(holdId)}`, {
+      method: 'DELETE',
+      keepalive: true,
+      headers: { apikey: anonKey, Authorization: `Bearer ${anonKey}` },
+    }).catch(() => {});
+  } catch { /* best-effort */ }
+}
+
 // Mantiene el hold al día con lo que la persona va marcando en el
 // formulario (personas / carril exclusivo), revalidando el cupo real —
 // así otros usuarios ven el horario reflejar esa intención al instante,

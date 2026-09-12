@@ -7,6 +7,7 @@ import AdminPanel from './features/admin-panel/AdminPanel';
 import ClientAccountView from './features/client-account/ClientAccountView';
 import PublicSiteModals from './features/public-site/modals/PublicSiteModals';
 import PublicCancelModal from './features/public-site/modals/PublicCancelModal';
+import PublicVerifyModal from './features/public-site/modals/PublicVerifyModal';
 
 export default function App() {
   const { state, actions } = useEmussStore();
@@ -43,6 +44,9 @@ export default function App() {
           onSubmit={actions.submitPublicCancel}
           onClose={actions.closePublicCancelModal}
         />
+      )}
+      {state.publicVerifyModal && (
+        <PublicVerifyModal modal={state.publicVerifyModal} onClose={actions.closePublicVerifyModal} />
       )}
     </div>
   );

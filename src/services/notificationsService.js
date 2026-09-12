@@ -21,6 +21,12 @@ export function cancelUrlFor(code) {
   return `${siteBaseUrl()}?cancelar=${encodeURIComponent(code)}`;
 }
 
+// URL que codifica el QR del ticket: la abre el celular del encargado de la
+// puerta al escanear (sin instalar nada) y muestra si la reserva es válida.
+export function verifyUrlFor(code) {
+  return `${siteBaseUrl()}?verificar=${encodeURIComponent(code)}`;
+}
+
 async function invokeEmail(to, subject, html) {
   if (!to) return { sent: false, reason: 'no_email' };
   try {

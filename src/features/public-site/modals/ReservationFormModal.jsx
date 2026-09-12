@@ -1,5 +1,8 @@
 import Modal from '../../../components/ui/Modal';
+import TurnstileWidget from '../../../components/ui/TurnstileWidget';
 import { PAYMENT_METHODS } from '../publicSiteSelectors';
+
+const TURNSTILE_ACTIVE = Boolean(import.meta.env.VITE_TURNSTILE_SITE_KEY);
 
 const fieldStyle = { width: '100%', boxSizing: 'border-box', padding: '12px 14px', borderRadius: 12, border: '1.5px solid #e2e8f0', fontSize: 14 };
 const labelStyle = { fontSize: 12.5, fontWeight: 700, color: '#334155', display: 'block', marginBottom: 6 };
@@ -173,9 +176,17 @@ export default function ReservationFormModal({
         />
       </div>
 
+      <TurnstileWidget onVerify={(token) => onChangeField('turnstileToken', token)} />
+
       <div style={{ display: 'flex', gap: 12, justifyContent: 'flex-end' }}>
         <button onClick={onCancel} style={{ padding: '13px 22px', borderRadius: 12, border: '1.5px solid #e2e8f0', background: '#ffffff', color: '#334155', fontWeight: 700, fontSize: 14, cursor: 'pointer' }}>Cancelar</button>
-        <button onClick={onSubmit} style={{ padding: '13px 22px', borderRadius: 12, border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 8px 20px rgba(79,70,229,0.28)' }}>🛒 Agregar al carrito</button>
+        <button
+          onClick={onSubmit}
+          disabled={TURNSTILE_ACTIVE && !form.turnstileToken}
+          style={{ padding: '13px 22px', borderRadius: 12, border: 'none', background: '#4f46e5', color: '#ffffff', fontWeight: 700, fontSize: 14, cursor: 'pointer', boxShadow: '0 8px 20px rgba(79,70,229,0.28)', opacity: TURNSTILE_ACTIVE && !form.turnstileToken ? 0.6 : 1 }}
+        >
+          🛒 Agregar al carrito
+        </button>
       </div>
     </Modal>
   );

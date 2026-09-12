@@ -1,4 +1,4 @@
-import { buildAccessibilityLabel, buildCountdownLabel, buildModalPricing, buildPersonaOptions, paymentMethodLabel } from '../publicSiteSelectors';
+import { buildAccessibilityItems, buildCountdownLabel, buildModalPricing, buildPersonaOptions, paymentMethodLabel } from '../publicSiteSelectors';
 import QueueModal from './QueueModal';
 import NotifyModal from './NotifyModal';
 import ReservationFormModal from './ReservationFormModal';
@@ -12,11 +12,12 @@ export default function PublicSiteModals({ state, actions }) {
 
   return (
     <>
-      {modal && (modal.type === 'queue-info' || modal.type === 'queue-success') && (
+      {modal && modal.type === 'queue-info' && (
         <QueueModal
-          step={modal.type === 'queue-info' ? 'info' : 'success'}
           sedeName={pricing.modalSedeName}
           slotTime={pricing.modalSlotTime}
+          waitingCount={state.queueWaitingCount}
+          countdownLabel={buildCountdownLabel(state.queueCountdown)}
           onClose={actions.closeModal}
           onJoinQueue={actions.joinQueue}
         />
@@ -48,7 +49,8 @@ export default function PublicSiteModals({ state, actions }) {
           ratePrice={pricing.ratePrice}
           totalPrecio={pricing.totalPrecio}
           countdownLabel={buildCountdownLabel(state.countdown)}
-          accesibilidadLabel={buildAccessibilityLabel(state.form)}
+          accesibilidadItems={buildAccessibilityItems(state.form)}
+          notasAccesibilidad={state.form.notasAccesibilidad}
           metodoPagoLabel={paymentMethodLabel(state.form.metodoPago)}
           acompanantesLabel={!state.form.exclusivo ? (state.form.acompanantes || []).filter(Boolean).join(', ') : ''}
           contactoEmergencia={state.form.contactoEmergencia}

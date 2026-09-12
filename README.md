@@ -1,5 +1,7 @@
 # EMUSS — Disponibilidad de Piscinas
 
+La versión publicada en [GitHub Pages](https://luiste1.github.io/proyecto-emuss/) es ahora **EMUSS V2**, con código e instrucciones en [v2/README.md](v2/README.md). El código anterior de esta raíz se conserva como referencia; el workflow de Pages compila `v2/`.
+
 Aplicación React (Vite + JavaScript) para la reserva de carriles en la red de
 complejos acuáticos EMUSS: sitio público de disponibilidad/reservas, cuenta
 de cliente y panel administrativo con analítica y gestión de accesos —
